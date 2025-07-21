@@ -22,9 +22,6 @@ load_dotenv()
 # Configure OpenAI API Key from environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Password Configuration
-CHATBOT_PASSWORD = os.getenv("CHATBOT_PASSWORD", "aniket2024")  # Default password if not set in env
-
 # AWS SES configuration (add these to your .env file)
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -251,51 +248,6 @@ AI Chatbot/Virtual Assistants Services
     """
 }
 
-def check_password():
-    """Returns True if the user has entered the correct password."""
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["password"] == CHATBOT_PASSWORD:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the password
-        else:
-            st.session_state["password_correct"] = False
-
-    # Return True if password is validated
-    if st.session_state.get("password_correct", False):
-        return True
-
-    # Show input for password
-    st.markdown(
-        """
-        <div style="display: flex; justify-content: center; align-items: center; min-height: 60vh;">
-            <div style="text-align: center; padding: 2rem; border: 1px solid #e0e0e0; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background: white; max-width: 400px; width: 100%;">
-                <h2 style="color: #333; margin-bottom: 1rem;">🔐 Access Required</h2>
-                <p style="color: #666; margin-bottom: 2rem;">Please enter the password to access<br><strong>Alex - Aniket Solutions AI Assistant</strong></p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True
-    )
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.text_input(
-            "Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password",
-            placeholder="Enter password...",
-            help="Contact your administrator for the password"
-        )
-        
-        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
-            st.error("❌ Incorrect password. Please try again.")
-        
-        st.info("💡 **Demo Access:** Use password 'aniket2024' to explore the chatbot")
-
-    return False
-    """Fetch content from company URL"""
 def fetch_company_content():
     """Fetch content from company URL"""
     try:
@@ -683,284 +635,6 @@ Available solutions: TMS, Procurement, Inventory, Crewing, Custom Development, M
 Keep response under 100 words and suggest a specific action."""
         
         return generate_ai_response(context_prompt, st.session_state.messages)
-    """Generate response based on company information and comprehensive knowledge base"""
-    
-    query_lower = query.lower()
-    
-    # Check for specific product queries
-    if any(word in query_lower for word in ['inventory', 'stock', 'spare', 'consumable', 'stores']):
-        return f"""
-**AniSol Inventory Control - Fleet-Wide Inventory Management**
-
-{PRODUCT_KNOWLEDGE_BASE['inventory_control']}
-
-**Key Benefits:**
-• 🛠️ Made for Seafarers: Designed for real shipboard operations
-• 📋 Enforces Standardization: Central control of item catalogs
-• 🔐 Role-based Access & Audit Logs: Secure, controlled updates
-• ☁️ Ship & Cloud Ready: Sync when connected, operate standalone offline
-• 📈 Fleet Insight: Fleet-wide views of inventory status
-
-Would you like more details about specific inventory management features?
-        """
-    
-    elif any(word in query_lower for word in ['payroll', 'wages', 'salary', 'cash', 'crew payment']):
-        return f"""
-**AniSol Payroll & Master Cash System**
-
-{PRODUCT_KNOWLEDGE_BASE['payroll_master_cash']}
-
-**Why Choose AniSol Payroll?**
-• 🛳️ Built for Ship Use: Designed by seafarers for onboard workflows
-• 💼 Office Integration: Direct export to shore systems
-• 🔒 Secure & Compliant: Multi-level approval workflows
-• 📄 Formal Reports: Portage bill, petty cash summary, crew ledger
-
-How can I help you with crew payroll management?
-        """
-    
-    elif any(word in query_lower for word in ['crew', 'crewing', 'staff', 'personnel']):
-        return f"""
-**AniSol Crewing Module - Complete Crew Management**
-
-{PRODUCT_KNOWLEDGE_BASE['crewing_module']}
-
-**Comprehensive Features:**
-• Complete crew lifecycle management from hiring to performance evaluation
-• Integrated payroll and cash management
-• Document and certification tracking with compliance alerts
-• Performance analytics and appraisal workflows
-
-What specific crew management challenge can I help you with?
-        """
-    
-    elif any(word in query_lower for word in ['tms', 'maintenance', 'technical', 'planned maintenance', 'pms']):
-        return f"""
-**AniSol TMS - Technical Management System**
-
-{PRODUCT_KNOWLEDGE_BASE['tms']}
-
-**AniSol TMS Advantages:**
-• Unified UI for most operations from single screen
-• No dedicated server needed
-• Low bandwidth replication ideal for vessels
-• Modular design - integrates but runs independently
-• Fast user adoption with seafarer-friendly design
-
-What technical management features interest you most?
-        """
-    
-    elif any(word in query_lower for word in ['procurement', 'purchasing', 'requisition', 'supplier']):
-        return f"""
-**AniSol Procurement - AI-Powered Maritime Purchasing**
-
-{PRODUCT_KNOWLEDGE_BASE['procurement']}
-
-**Key Advantages:**
-• Built by shipping professionals for shipping operations
-• AI-powered procurement analytics for smarter decisions
-• Seamless integration with inventory and technical systems
-• Audit-ready logs perfect for ISM compliance
-• ShipServ integration for enhanced sourcing
-
-How can our procurement system streamline your purchasing process?
-        """
-    
-    elif any(word in query_lower for word in ['custom', 'development', 'software', 'application']):
-        return f"""
-**Custom Application Development Services**
-
-{SERVICES_KNOWLEDGE_BASE['custom_development']}
-
-**Our Development Advantages:**
-• Business-focused approach that delivers measurable ROI
-• Designed by people who understand real business operations
-• Agile methodology with regular feedback and iterations
-• Full support from concept to deployment and beyond
-
-What kind of custom application would help your business?
-        """
-    
-    elif any(word in query_lower for word in ['mobile', 'app', 'ios', 'android']):
-        return f"""
-**Mobile Solutions Services**
-
-{SERVICES_KNOWLEDGE_BASE['mobile_solutions']}
-
-**Transform Your Mobile Strategy:**
-• Native and cross-platform development expertise
-• Offline functionality for reliable field operations
-• Real-time data access and push notifications
-• Secure authentication and GPS integration
-
-How can mobile applications improve your team's productivity?
-        """
-    
-    elif any(word in query_lower for word in ['ai', 'artificial intelligence', 'machine learning', 'chatbot']):
-        return f"""
-**AI & Machine Learning Services**
-
-{SERVICES_KNOWLEDGE_BASE['ai_machine_learning']}
-
-**Cutting-Edge AI Solutions:**
-• Generative AI for content creation and automation
-• Custom chatbots and virtual assistants
-• Predictive analytics and intelligent automation
-• Computer vision and natural language processing
-
-Ready to harness AI for your business? What challenges can AI help solve?
-        """
-    
-    elif any(word in query_lower for word in ['data', 'database', 'migration', 'analytics']):
-        return f"""
-**Data Services**
-
-{SERVICES_KNOWLEDGE_BASE['data_services']}
-
-**Transform Your Data Strategy:**
-• Safe, seamless data migrations with zero downtime
-• Modern database platforms for improved performance
-• Advanced analytics and business intelligence
-• Full compliance with data protection regulations
-
-What data challenges is your organization facing?
-        """
-    
-    elif any(word in query_lower for word in ['integration', 'api', 'connect', 'sync']):
-        return f"""
-**System Integration Services**
-
-{SERVICES_KNOWLEDGE_BASE['system_integration']}
-
-**Unify Your Technology Ecosystem:**
-• Connect disparate systems for seamless operations
-• API development and third-party integrations
-• Real-time and batch integration patterns
-• Legacy system connectivity without replacement
-
-Which systems do you need to connect for better workflow?
-        """
-    
-    elif any(word in query_lower for word in ['service', 'services']):
-        return f"""
-**Aniket Solutions Services:**
-
-We offer comprehensive technology services including:
-
-🚢 **Maritime Solutions:**
-• AniSol TMS (Technical Management)
-• AniSol Procurement (AI-Powered Purchasing)
-• AniSol Inventory Control
-• AniSol Crewing Module
-• AniSol Payroll & Master Cash
-
-💻 **Technology Services:**
-• Custom Application Development
-• Mobile Solutions (iOS/Android)
-• AI & Machine Learning
-• Data Services & Migration
-• System Integration
-• AI Chatbots & Virtual Assistants
-
-**Our Expertise:**
-- Decades of experience in technology business
-- Proven track record since 2004
-- Global reach with local understanding
-- Focus on cost-effectiveness and efficiency
-
-Which service area interests you most?
-        """
-    
-    elif any(word in query_lower for word in ['product', 'products']):
-        return f"""
-**Aniket Solutions Products:**
-
-🚢 **Maritime Software Suite:**
-• **AniSol TMS** - Technical Management & Planned Maintenance
-• **AniSol Procurement** - AI-Powered Maritime Purchasing
-• **AniSol Inventory Control** - Fleet-Wide Inventory Management
-• **AniSol Crewing Module** - Complete Crew Management
-• **AniSol Payroll & Master Cash** - Crew Financial Management
-
-💡 **Technology Solutions:**
-• Custom Web Applications
-• Mobile Applications (Native & Cross-Platform)
-• AI-Powered Business Solutions
-• Data Analytics & BI Platforms
-• System Integration Solutions
-
-**Product Development Approach:**
-- Understanding diverse market needs
-- Cost-effective product design
-- Global market compatibility
-- Efficient and reliable solutions
-
-**Upcoming:**
-- Marine IoT product line (launching soon)
-
-What specific product would you like to learn more about?
-        """
-    
-    elif any(word in query_lower for word in ['about', 'company', 'who']):
-        return f"""
-**About Aniket Solutions:**
-
-🏢 **Company Overview:**
-- Established in February 2004 in Singapore
-- Privately held by experienced Technopreneurs
-- Total solutions provider for technology needs
-
-🌍 **Global Presence:**
-We serve customers worldwide including:
-- USA, UK, Cyprus, Greece
-- India, Japan, Singapore, Hong Kong
-
-💼 **Our Strengths:**
-- Decades of business experience
-- Understanding of diverse work cultures
-- Cost-effective and efficient solutions
-- Rapid growth with excellent customer service
-
-🚀 **Innovation Focus:**
-- Marine IoT solutions development
-- Cutting-edge technology implementations
-- Custom solution development
-- AI-powered business solutions
-
-🎯 **What Makes Us Different:**
-- Built by people who understand real business operations
-- Maritime expertise combined with modern technology
-- Modular, scalable solutions that grow with your business
-- Comprehensive support from concept to deployment
-
-How can we help with your technology needs?
-        """
-    
-    else:
-        return f"""
-**Aniket Solutions - Your Total Solutions Provider**
-
-Thank you for your interest in Aniket Solutions! We've been providing excellent technology solutions since 2004.
-
-**Quick Facts:**
-• Established: February 2004, Singapore
-• Global reach: 8+ countries served
-• Expertise: Maritime & Technology solutions
-• Focus: Cost-effective, efficient solutions
-
-**What we offer:**
-🚢 **Maritime Solutions:** TMS, Procurement, Inventory, Crewing, Payroll
-💻 **Technology Services:** Custom Development, Mobile Apps, AI/ML, Data Services
-🤖 **AI Solutions:** Chatbots, Generative AI, Machine Learning
-
-**Our Approach:**
-- Designed by professionals who understand real business operations
-- Modular solutions that integrate seamlessly
-- Focus on practical, measurable business value
-- Comprehensive support and maintenance
-
-How can I help you learn more about our specific solutions?
-        """
 
 def generate_otp():
     """Generate a 6-digit OTP"""
@@ -1438,11 +1112,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Check password before showing the app
-if not check_password():
-    st.stop()  # Stop execution if password is incorrect
-
-# Custom CSS for better styling with avatars
+# Custom CSS for better styling
 st.markdown("""
 <style>
     .stApp {
@@ -1455,37 +1125,21 @@ st.markdown("""
         border-radius: 0.5rem;
         margin-bottom: 1rem;
         display: flex;
-        align-items: flex-start;
-        gap: 0.75rem;
+        flex-direction: column;
     }
     
     .chat-message.user {
         background-color: #e3f2fd;
-        margin-left: 10%;
-        flex-direction: row-reverse;
+        margin-left: 20%;
     }
     
     .chat-message.assistant {
         background-color: #f5f5f5;
-        margin-right: 10%;
-    }
-    
-    .chat-avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        border: 2px solid #e0e0e0;
-    }
-    
-    .chat-content {
-        flex: 1;
-        min-width: 0;
+        margin-right: 20%;
     }
     
     .chat-message .message-content {
-        margin-top: 0.25rem;
-        word-wrap: break-word;
+        margin-top: 0.5rem;
     }
     
     .chat-message .message-time {
@@ -1510,13 +1164,6 @@ st.markdown("""
         padding: 1rem 0;
         border-bottom: 2px solid #f0f0f0;
         margin-bottom: 2rem;
-    }
-    
-    .avatar-selector {
-        padding: 1rem;
-        border: 1px solid #e0e0e0;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1612,16 +1259,16 @@ if "api_key" not in st.session_state:
     else:
         st.session_state.api_key = ""
 
-# Initialize avatar selection
-if "selected_avatar" not in st.session_state:
-    st.session_state.selected_avatar = ALEX_AVATAR_URL
-
 # Initialize OpenAI client in session state
 if "openai_client" not in st.session_state:
     if OPENAI_API_KEY:
         st.session_state.openai_client = client
     else:
         st.session_state.openai_client = None
+
+# Initialize selected avatar in session state
+if "selected_avatar" not in st.session_state:
+    st.session_state.selected_avatar = ALEX_AVATAR_URL
 
 if "conversation_flow" not in st.session_state:
     st.session_state.conversation_flow = {
@@ -1715,36 +1362,33 @@ with st.sidebar:
     if st.button("🔗 Open Contact Form", use_container_width=True):
         st.markdown(f"[Open Contact Form]({CONTACT_FORM_URL})")
     
-    # Password Management
-    st.subheader("🔐 Password Settings")
+    # Session Management
+    st.subheader("🔄 Session Management")
     
-    current_password = st.text_input(
-        "Current Password",
-        type="password",
-        help="Enter the current chatbot password"
-    )
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🔄 Reset Session", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.success("Session reset!")
+            st.rerun()
     
-    if current_password == CHATBOT_PASSWORD:
-        st.success("✅ Current password verified")
-        
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            if st.button("🚪 Logout", use_container_width=True):
-                st.session_state["password_correct"] = False
-                st.success("Logged out successfully!")
-                st.rerun()
-        
-        with col2:
-            if st.button("🔄 Reset Session", use_container_width=True):
-                for key in list(st.session_state.keys()):
-                    if key != "password_correct":
-                        del st.session_state[key]
-                st.success("Session reset!")
-                st.rerun()
-    elif current_password:
-        st.error("❌ Incorrect password")
-    
-    st.caption(f"💡 Demo password: aniket2024")
+    with col2:
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state.messages = []
+            # Reset conversation flow and add greeting
+            st.session_state.conversation_flow = {
+                "email_validated": False,
+                "awaiting_email": True,
+                "awaiting_otp": False,
+                "otp_verified": False,
+                "awaiting_selection": False,
+                "selected_category": None,
+                "awaiting_specification": False
+            }
+            st.session_state.otp_data = None
+            add_initial_greeting()
+            st.rerun()
     
     st.divider()
     
@@ -1881,23 +1525,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Clear chat button
-    if st.button("🗑️ Clear Chat History", use_container_width=True):
-        st.session_state.messages = []
-        # Reset conversation flow and add greeting
-        st.session_state.conversation_flow = {
-            "email_validated": False,
-            "awaiting_email": True,
-            "awaiting_otp": False,
-            "otp_verified": False,
-            "awaiting_selection": False,
-            "selected_category": None,
-            "awaiting_specification": False
-        }
-        st.session_state.otp_data = None
-        add_initial_greeting()
-        st.rerun()
-    
     # Export chat button
     if st.session_state.messages and st.button("💾 Export Chat", use_container_width=True):
         chat_data = {
@@ -1912,9 +1539,9 @@ with st.sidebar:
         )
 
 # Main chat interface
-st.markdown('<div class="main-header"><h1>🤖 Alex - Aniket Solutions AI Assistant</h1><p>Your intelligent technology consultant with a friendly face</p></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header"><h1>🤖 Alex - Aniket Solutions AI Assistant</h1><p>Your intelligent technology consultant</p></div>', unsafe_allow_html=True)
 
-# Display chat messages with avatars
+# Display chat messages
 chat_container = st.container()
 
 with chat_container:
@@ -1922,22 +1549,14 @@ with chat_container:
         message_class = "user" if message["role"] == "user" else "assistant"
         timestamp = message.get("timestamp", "")
         
-        # Choose avatar based on role
-        if message["role"] == "user":
-            avatar_url = USER_AVATAR_URL
-            sender_name = "You"
-        else:
-            avatar_url = st.session_state.get("selected_avatar", ALEX_AVATAR_URL)
-            sender_name = "Alex"
+        # Choose sender name based on role
+        sender_name = "You" if message["role"] == "user" else "Alex"
         
         st.markdown(f"""
         <div class="chat-message {message_class}">
-            <img src="{avatar_url}" class="chat-avatar" alt="{sender_name}">
-            <div class="chat-content">
-                <div class="sender-name">{sender_name}</div>
-                <div class="message-time">{timestamp}</div>
-                <div class="message-content">{message["content"]}</div>
-            </div>
+            <div class="sender-name">{sender_name}</div>
+            <div class="message-time">{timestamp}</div>
+            <div class="message-content">{message["content"]}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -2055,66 +1674,6 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                         add_message_to_chat("assistant", f"❌ Failed to resend verification code: {message}")
                         st.error(f"Failed to resend: {message}")
                     st.rerun()
-
-# Skip the rigid selection buttons - go straight to AI conversation after OTP verification
-# elif st.session_state.conversation_flow["awaiting_selection"]:
-#     st.markdown("---")
-#     selected_option = show_selection_buttons(
-#         "What are you interested in learning about?",
-#         ["Products", "Services"],
-#         "interest"
-#     )
-#     
-#     if selected_option:
-#         add_message_to_chat("user", selected_option)
-#         st.session_state.conversation_flow["awaiting_selection"] = False
-#         st.session_state.conversation_flow["selected_category"] = selected_option.lower()
-#         st.session_state.conversation_flow["awaiting_specification"] = True
-#         
-#         if selected_option.lower() == "products":
-#             add_message_to_chat("assistant", "What kind of product are you interested in?")
-#         else:
-#             add_message_to_chat("assistant", "What kind of service are you interested in?")
-#         
-#         st.rerun()
-
-# elif st.session_state.conversation_flow["awaiting_specification"]:
-#     st.markdown("---")
-#     user_specification = st.text_input(
-#         f"Please specify the type of {st.session_state.conversation_flow['selected_category']} you're interested in:",
-#         key="specification_input"
-#     )
-#     
-#     col1, col2 = st.columns([1, 4])
-#     with col1:
-#         if st.button("Submit", key="submit_specification"):
-#             if user_specification.strip():
-#                 add_message_to_chat("user", user_specification)
-#                 
-#                 # Store the selected category before resetting
-#                 selected_category = st.session_state.conversation_flow["selected_category"]
-#                 
-#                 st.session_state.conversation_flow["awaiting_specification"] = False
-#                 
-#                 # Reset flow for potential new conversation
-#                 st.session_state.conversation_flow = {
-#                     "email_validated": True,  # Keep email validated
-#                     "awaiting_email": False,
-#                     "awaiting_otp": False,
-#                     "otp_verified": True,  # Keep OTP verified
-#                     "awaiting_selection": False,
-#                     "selected_category": None,
-#                     "awaiting_specification": False
-#                 }
-#                 
-#                 # Add confirmation message
-#                 add_message_to_chat("assistant", 
-#                     f"Thank you! I understand you're interested in {user_specification} "
-#                     f"in our {selected_category} category. "
-#                     f"How can I help you further with this?"
-#                 )
-#                 
-#                 st.rerun()
 
 # Chat input functions
 def get_ai_response(messages, model, temperature, max_tokens, system_prompt):
