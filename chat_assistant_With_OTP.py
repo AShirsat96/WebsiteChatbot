@@ -384,29 +384,24 @@ CONTACT_FORM_URL = "https://www.aniketsolutions.com/contact"  # Update with actu
 CONTACT_EMAIL = "info@aniketsolutions.com"
 
 def should_escalate_to_contact_form(user_message):
-    """Determine if query should be escalated to contact form"""
+    """Determine if query should be escalated to contact form - only for very specific cases"""
     escalation_keywords = [
-        # Pricing and costs
-        'price', 'pricing', 'cost', 'quote', 'estimate', 'budget', 'how much',
+        # Only very specific pricing requests
+        'detailed pricing', 'exact cost', 'price quote', 'cost estimate', 'budget proposal',
         
-        # Complex technical details
-        'specification', 'technical specs', 'integration details', 'architecture',
-        'implementation timeline', 'deployment', 'migration plan',
+        # Only very specific technical implementation details
+        'detailed implementation plan', 'migration timeline', 'deployment schedule',
         
-        # Legal and compliance
-        'contract', 'legal', 'compliance', 'sla', 'terms', 'agreement',
-        'gdpr', 'hipaa', 'regulatory', 'audit',
+        # Legal and contract specifics
+        'contract terms', 'legal agreement', 'sla details', 'service agreement',
         
-        # Custom requirements
-        'custom solution', 'specific requirements', 'unique needs',
-        'detailed proposal', 'rfp', 'tender',
-        
-        # Human interaction requests
-        'speak to someone', 'talk to expert', 'human', 'sales team',
-        'account manager', 'consultant', 'specialist'
+        # Explicit requests for human contact
+        'speak to sales', 'talk to sales team', 'contact sales', 'human sales rep',
+        'account manager', 'sales consultant'
     ]
     
     message_lower = user_message.lower()
+    # Only escalate if the query contains very specific escalation phrases
     return any(keyword in message_lower for keyword in escalation_keywords)
 
 def generate_ai_response(user_message, conversation_history=None):
@@ -557,84 +552,212 @@ What other general questions about our services can I help with in the meantime?
     return random.choice(contact_responses)
 
 def get_smart_company_response(query):
-    """Enhanced company response that combines knowledge base with concise AI intelligence"""
+    """Enhanced company response that uses knowledge base first, then AI"""
     
     query_lower = query.lower()
     
-    # For specific product/service queries, provide focused info with context-aware follow-ups
-    if any(word in query_lower for word in ['inventory', 'stock', 'spare', 'consumable']):
-        # Check if user mentioned fleet size or specifics
-        if any(num in query_lower for num in ['10', 'ten', 'small', 'large', 'vessel', 'ship']):
-            return f"""Perfect! For a 10-crew operation, **AniSol Crewing** would streamline your crew payroll, document tracking, and compliance management significantly.
+    # For crew management specific queries
+    if any(word in query_lower for word in ['crew management', 'crew software', 'maritime crew', 'crewing']):
+        return f"""**AniSol Crewing Module - Complete Crew Management Solution**
 
-Key benefits for your size:
-• Automated payroll processing for 10 crew members
-• Digital document expiry alerts
-• MLC compliance tracking
-• Shore accounting integration
+Our **AniSol Crewing** system handles all aspects of crew management:
 
-Would you like to see a demo tailored to a 10-crew setup, or do you have specific compliance requirements I should know about?"""
-        else:
-            return f"""**AniSol Inventory Control** manages fleet-wide spare parts and consumables with real-time tracking, automated reordering, and seamless ship-shore sync. Designed specifically for maritime operations.
+**Key Features:**
+• **Crew Payroll & Wages**: Full lifecycle payroll, wages, overtime, bonuses, allowances
+• **Document Management**: Centralized repository with expiry alerts for certificates
+• **Crew Scheduling**: Planning, monitoring, contracts, rotations, shore leave
+• **Compliance Tracking**: Flag state, STCW, MLC compliance automation
+• **Performance Analytics**: Structured workflows and competency assessments
+• **Multi-Currency Support**: Exchange rates, multi-company/agency setups
 
-What size fleet are you managing? This helps me recommend the right configuration."""
-    
-    elif any(word in query_lower for word in ['crew', 'crewing', 'payroll']) and any(num in query_lower for num in ['10', 'ten']):
-        return f"""Perfect! For a 10-crew operation, **AniSol Crewing** would streamline your crew payroll, document tracking, and compliance management significantly.
+**Built for Maritime Operations:**
+- Cloud-first, scalable infrastructure
+- Seamless integration with other AniSol modules
+- Secure backups and audit trails
+- Designed by seafarers for real maritime workflows
 
-Key benefits for your size:
-• Automated payroll processing 
-• Digital document expiry alerts
-• MLC compliance tracking
-• Shore accounting integration
+What specific crew management challenges are you facing? I can provide more details on how our system addresses them."""
 
-Would you like to see a demo tailored to a 10-crew setup, or do you have specific compliance challenges?"""
-    
-    elif any(word in query_lower for word in ['tms', 'maintenance', 'technical']):
-        return f"""**AniSol TMS** handles planned maintenance, inspections, certificates, and defect management. Built by seafarers for real ship operations with offline capabilities.
+    # For inventory/stores queries
+    elif any(word in query_lower for word in ['inventory', 'stock', 'spare', 'consumable', 'stores']):
+        return f"""**AniSol Inventory Control - Fleet-Wide Inventory Management**
 
-What type of vessels do you operate? This affects which features would be most valuable."""
-    
-    elif any(word in query_lower for word in ['procurement', 'purchasing']):
-        return f"""**AniSol Procurement** streamlines maritime purchasing with AI-powered vendor management, automated approvals, and ShipServ integration. Includes full audit trails for ISM compliance.
+Our inventory system is designed specifically for maritime operations:
+
+**Key Features:**
+• **Spares & Consumables**: Separate tracking for machinery spares and consumable stores
+• **ROB Tracking**: Real-time Remaining Onboard quantities
+• **Automated Reordering**: Smart alerts and procurement integration
+• **Component Mapping**: Link spare parts to specific systems/equipment
+• **Transaction History**: Complete audit trails with export capability
+• **Ship-Shore Sync**: Works offline, syncs when connected
+
+**Integration Benefits:**
+- Links with AniSol TMS for maintenance-driven consumption
+- Connects to AniSol Procurement for automated ordering
+- ERP/Accounts ready for inventory valuation
+
+What size fleet are you managing? This helps me recommend the right configuration approach."""
+
+    # For maintenance/TMS queries
+    elif any(word in query_lower for word in ['maintenance', 'tms', 'technical management', 'planned maintenance']):
+        return f"""**AniSol TMS - Technical Management System**
+
+Built by seafarers for real ship operations:
+
+**Maintenance Management:**
+• **Planned Maintenance**: Calendar, counter, and condition-based scheduling
+• **Unplanned Maintenance**: One-click breakdown reporting
+• **Work Orders**: Complete generation and closure with audit trails
+• **Inspections**: PSC, Class Surveys, and defect tracking
+
+**Key Advantages:**
+• **Unified Interface**: Most operations from a single screen
+• **No Dedicated Server**: Any onboard computer can host
+• **Low Bandwidth**: Ultra-efficient ship-shore synchronization
+• **Inventory Integration**: Direct links between spares and work orders
+• **Offline Capable**: Works independently when internet is unavailable
+
+**Dashboard & Analytics**: Real-time vessel health monitoring with drill-down capabilities
+
+What type of vessels do you operate? Different vessel types benefit from different TMS configurations."""
+
+    # For procurement queries
+    elif any(word in query_lower for word in ['procurement', 'purchasing', 'supplier', 'vendor']):
+        return f"""**AniSol Procurement - AI-Powered Maritime Purchasing**
+
+Streamline your entire procurement process:
+
+**Smart Features:**
+• **AI-Powered Analytics**: Intelligent procurement insights and recommendations
+• **Multiple Requisition Types**: Spares, repairs, services, adhoc requests
+• **Vendor Management**: Centralized supplier database with performance tracking
+• **ShipServ Integration**: Enhanced sourcing and catalog synchronization
+• **Automated Approvals**: Configurable workflows by cost, vessel, and user role
+
+**Compliance & Control:**
+• **Full Audit Trails**: Complete traceability from requisition to invoice
+• **Budget Controls**: Budget codes linked at requisition level
+• **2-way & 3-way Matching**: Automated invoice matching
+• **Low Bandwidth**: No need to wait for vessel email systems
+
+**Integration Ready**: Works seamlessly with inventory and technical systems
 
 What's your biggest procurement challenge - vendor management, approval workflows, or compliance tracking?"""
-    
-    elif any(word in query_lower for word in ['custom', 'development', 'software']):
-        return f"""We develop custom applications tailored to your business processes using modern frameworks. From web apps to mobile solutions, we focus on practical, scalable solutions.
+
+    # For AI/technology services
+    elif any(word in query_lower for word in ['ai', 'artificial intelligence', 'chatbot', 'automation']):
+        return f"""**AI & Machine Learning Services**
+
+We help businesses harness AI for practical results:
+
+**AI Solutions:**
+• **Custom Chatbots**: 24/7 customer service automation
+• **Generative AI**: Content creation and automated responses
+• **Predictive Analytics**: Trend analysis and forecasting
+• **Process Automation**: Intelligent workflow automation
+• **Computer Vision**: Quality control and monitoring
+• **Natural Language Processing**: Document analysis and processing
+
+**Technologies We Use:**
+- Python, TensorFlow, PyTorch, Hugging Face
+- OpenAI APIs, LangChain, custom models
+- Integration with existing business systems
+
+**Industry Applications:**
+- Manufacturing: Predictive maintenance
+- Healthcare: Medical data analysis  
+- Finance: Fraud detection
+- Maritime: Operational optimization
+
+What repetitive tasks or decision-making processes in your business could benefit from AI automation?"""
+
+    # For custom development
+    elif any(word in query_lower for word in ['custom development', 'software', 'application', 'web app']):
+        return f"""**Custom Application Development Services**
+
+We build software solutions tailored to your specific business needs:
+
+**Development Expertise:**
+• **Enterprise Web Applications**: Modern, responsive applications
+• **Custom Software Solutions**: Bespoke applications for unique processes
+• **Legacy Modernization**: Upgrade systems while preserving functionality
+• **API Development**: Flexible, scalable microservices architectures
+
+**Technologies:**
+- Frontend: React, Angular, Vue.js
+- Backend: Node.js, Python, Java, .NET
+- Databases: PostgreSQL, MySQL, MongoDB
+- Cloud: AWS, Azure, Google Cloud
+
+**Our Process:**
+1. Discovery & Planning
+2. Design & Architecture  
+3. Agile Development
+4. Testing & QA
+5. Deployment & Support
+
+**Industries We Serve**: Manufacturing, Healthcare, Finance, Logistics, Maritime, Retail, Education
 
 What specific business process needs automation or improvement?"""
-    
-    elif any(word in query_lower for word in ['mobile', 'app']):
-        return f"""We build native iOS/Android apps and cross-platform solutions with offline capabilities, real-time sync, and secure authentication. Perfect for field operations.
+
+    # For mobile app queries
+    elif any(word in query_lower for word in ['mobile', 'app', 'ios', 'android', 'smartphone']):
+        return f"""**Mobile Solutions Services**
+
+Transform your mobile strategy with professional app development:
+
+**Mobile Development:**
+• **Native Apps**: High-performance iOS and Android applications
+• **Cross-Platform**: React Native, Flutter for cost-effective solutions
+• **Progressive Web Apps**: App-like experiences through browsers
+• **Tablet Applications**: Optimized for field operations
+
+**Key Features:**
+• **Offline Functionality**: Work without internet connection
+• **Real-Time Data Access**: Instant synchronization
+• **Push Notifications**: Keep users engaged
+• **Secure Authentication**: Enterprise-grade security
+• **GPS Integration**: Location-based services
+• **Camera & Scanning**: Document capture and QR codes
+
+**Perfect For:**
+- Field service teams
+- Sales representatives  
+- Fleet management
+- Remote workers
 
 What type of mobile functionality would help your team work more efficiently?"""
-    
-    elif any(word in query_lower for word in ['ai', 'artificial intelligence', 'chatbot']):
-        return f"""We implement AI solutions including chatbots, process automation, predictive analytics, and generative AI for content creation. Focus on practical business value.
 
-What repetitive tasks or decision-making processes could benefit from AI automation?"""
-    
-    # For numerical responses or specific details, provide more targeted responses
-    elif any(num in query_lower for num in ['10', 'ten', 'small']):
-        return f"""Got it! For a smaller operation like yours, our solutions are designed to scale appropriately. 
+    # For general company/services inquiry
+    elif any(word in query_lower for word in ['services', 'company', 'about', 'solutions']):
+        return f"""**Aniket Solutions - Your Technology Partner Since 2004**
 
-For 10 crew members, I'd recommend starting with **AniSol Crewing** for payroll and compliance, plus **AniSol TMS** for maintenance tracking.
+**Maritime Software Suite:**
+🚢 **AniSol TMS** - Technical Management & Maintenance
+🚢 **AniSol Procurement** - AI-Powered Purchasing  
+🚢 **AniSol Inventory** - Fleet-Wide Inventory Control
+🚢 **AniSol Crewing** - Complete Crew Management
+🚢 **AniSol Payroll** - Crew Financial Management
 
-What's your biggest operational challenge right now - crew management, maintenance scheduling, or compliance tracking?"""
-    
-    # For general queries, use AI with context
+**Technology Services:**
+💻 **Custom Development** - Bespoke software solutions
+📱 **Mobile Applications** - iOS/Android development
+🤖 **AI & Machine Learning** - Intelligent automation
+📊 **Data Services** - Migration, analytics, warehousing
+🔗 **System Integration** - API development and connectivity
+
+**Why Choose Us:**
+• **Maritime Expertise**: Built by professionals who understand shipping
+• **Global Experience**: Serving clients across USA, UK, Singapore, India, Japan
+• **Proven Track Record**: 20+ years of successful implementations
+• **Cost-Effective**: Practical solutions that deliver ROI
+
+Which area interests you most - our maritime solutions or general technology services?"""
+
+    # If no specific match, use AI for a knowledgeable response
     else:
-        # Add more specific context to avoid repetition
-        context_prompt = f"""User query: {query}
-
-Provide a helpful response about Aniket Solutions services. Be specific and ask a different follow-up question than before. Focus on practical next steps.
-
-Available solutions: TMS, Procurement, Inventory, Crewing, Custom Development, Mobile Apps, AI/ML, Data Services, System Integration
-
-Keep response under 100 words and suggest a specific action."""
-        
-        return generate_ai_response(context_prompt, st.session_state.messages)
+        return generate_ai_response(query, st.session_state.messages)
 
 def generate_otp():
     """Generate a 6-digit OTP"""
@@ -1786,8 +1909,19 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
                     # Use AI-powered response system
                     with st.spinner("Thinking..."):
                         try:
-                            # Check if query is about company information for enhanced context
-                            if search_company_info(user_input):
+                            # Always check knowledge base first - much more permissive matching
+                            if (any(word in user_input.lower() for word in [
+                                # Maritime terms
+                                'crew', 'ship', 'vessel', 'maritime', 'marine', 'seafarer',
+                                'inventory', 'spare', 'maintenance', 'procurement', 'tms',
+                                'payroll', 'crewing', 'technical', 'purchasing', 'supplier',
+                                # Technology terms  
+                                'software', 'app', 'mobile', 'ai', 'development', 'custom',
+                                'system', 'integration', 'data', 'analytics', 'automation',
+                                'chatbot', 'solution', 'technology', 'service',
+                                # Business terms
+                                'management', 'control', 'tracking', 'compliance', 'workflow'
+                            ]) or search_company_info(user_input)):
                                 ai_response = get_smart_company_response(user_input)
                             else:
                                 # Use pure AI for general business conversation
