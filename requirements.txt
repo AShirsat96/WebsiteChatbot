@@ -1,0 +1,7 @@
+streamlit
+openai
+python-dotenv
+boto3
+dnspython
+requests
+beautifulsoup4
