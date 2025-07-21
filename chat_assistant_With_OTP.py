@@ -22,6 +22,9 @@ load_dotenv()
 # Configure OpenAI API Key from environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Password Configuration
+CHATBOT_PASSWORD = os.getenv("CHATBOT_PASSWORD", "aniket2024")  # Default password if not set in env
+
 # AWS SES configuration (add these to your .env file)
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
@@ -44,7 +47,18 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
         region_name=AWS_REGION
     )
 
-# Company information and comprehensive knowledge base
+# Avatar Configuration
+ALEX_AVATAR_URL = "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=b6e3f4&clothesColor=262e33&eyebrowType=default&eyeType=default&facialHairColor=auburn&facialHairType=default&hairColor=auburn&hatColor=ff5c5c&mouthType=smile&skinColor=light&topType=shortHairShortWaved"
+USER_AVATAR_URL = "https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=4f46e5&fontSize=40"
+
+# Alternative avatar options (you can change these URLs)
+ALTERNATIVE_AVATARS = {
+    "professional": "https://api.dicebear.com/7.x/avataaars/svg?seed=Professional&backgroundColor=e0e7ff&clothesColor=3730a3&eyebrowType=default&eyeType=default&facialHairType=default&hairColor=brown&mouthType=smile&skinColor=light&topType=shortHairShortFlat",
+    "friendly": "https://api.dicebear.com/7.x/avataaars/svg?seed=Friendly&backgroundColor=dcfce7&clothesColor=166534&eyebrowType=default&eyeType=happy&facialHairType=default&hairColor=black&mouthType=smile&skinColor=light&topType=shortHairDreads01",
+    "tech": "https://api.dicebear.com/7.x/avataaars/svg?seed=Tech&backgroundColor=f3f4f6&clothesColor=1f2937&eyebrowType=default&eyeType=default&facialHairType=default&hairColor=brown&mouthType=smile&skinColor=light&topType=shortHairShortCurly",
+    "support_agent": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjZjBmOWZmIiByeD0iMTAwIi8+CjwhLS0gSGVhZCAtLT4KPGNpcmNsZSBjeD0iMTAwIiBjeT0iODAiIHI9IjM1IiBmaWxsPSIjZmJiZjI0Ii8+CjwhLS0gSGFpciAtLT4KPHBhdGggZD0ibTY1IDYwYzAtMjAgMTUtMzUgMzUtMzVzMzUgMTUgMzUgMzVjMCAxMC01IDIwLTE1IDI1aC00MGMtMTAtNS0xNS0xNS0xNS0yNVoiIGZpbGw9IiM0YTQ3NGQiLz4KPCEtLSBHeWVzIC0tPgo8Y2lyY2xlIGN4PSI5MCIgY3k9Ijc1IiByPSI0IiBmaWxsPSIjMDAwIi8+CjxjaXJjbGUgY3g9IjExMCIgY3k9Ijc1IiByPSI0IiBmaWxsPSIjMDAwIi8+CjwhLS0gR2xhc3NlcyAtLT4KPHJlY3QgeD0iODAiIHk9IjY4IiB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIyIiByeD0iNSIvPgo8IS0tIE5vc2UgLS0+CjxjaXJjbGUgY3g9IjEwMCIgY3k9Ijg1IiByPSIyIiBmaWxsPSIjZDY5ZTJlIi8+CjwhLS0gTW91dGggLS0+CjxwYXRoIGQ9Im05MCA5NWMwIDUgNSAxMCAxMCAxMHMxMC01IDEwLTEwIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0ibm9uZSIvPgo8IS0tIEhlYWRzZXQgLS0+CjxwYXRoIGQ9Im03MCA2NWMtMTAgMC0xNSA1LTE1IDE1czUgMTUgMTUgMTVoNjBjMTAgMCAxNS01IDE1LTE1cy01LTE1LTE1LTE1IiBzdHJva2U9IiMzNzM3MzciIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIvPgo8Y2lyY2xlIGN4PSI3MCIgY3k9IjgwIiByPSI4IiBmaWxsPSIjMzczNzM3Ii8+CjxjaXJjbGUgY3g9IjEzMCIgY3k9IjgwIiByPSI4IiBmaWxsPSIjMzczNzM3Ii8+CjwhLS0gTWljIC0tPgo8bGluZSB4MT0iMTMwIiB5MT0iODAiIHgyPSIxMjAiIHkyPSIxMDAiIHN0cm9rZT0iIzM3MzczNyIgc3Ryb2tlLXdpZHRoPSIyIi8+CjxyZWN0IHg9IjExNSIgeT0iMTAwIiB3aWR0aD0iMTAiIGhlaWdodD0iOCIgZmlsbD0iIzM3MzczNyIgcng9IjIiLz4KPCEtLSBCb2R5IC0tPgo8cmVjdCB4PSI3NSIgeT0iMTE1IiB3aWR0aD0iNTAiIGhlaWdodD0iNjAiIGZpbGw9IiMyZDM3NDgiIHJ4PSI1Ii8+CjxyZWN0IHg9IjgwIiB5PSIxMjAiIHdpZHRoPSI0MCIgaGVpZ2h0PSIzMCIgZmlsbD0iIzM5OGVkYiIgcng9IjMiLz4KPC9zdmc+",
+    "custom": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face&auto=format"  # You can replace with your custom image
+}
 COMPANY_URL = "https://www.aniketsolutions.com/aspl/index.htm"
 COMPANY_INFO = """
 Aniket Solutions - TOTAL SOLUTIONS PROVIDER
@@ -237,6 +251,51 @@ AI Chatbot/Virtual Assistants Services
     """
 }
 
+def check_password():
+    """Returns True if the user has entered the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == CHATBOT_PASSWORD:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store the password
+        else:
+            st.session_state["password_correct"] = False
+
+    # Return True if password is validated
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show input for password
+    st.markdown(
+        """
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 60vh;">
+            <div style="text-align: center; padding: 2rem; border: 1px solid #e0e0e0; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); background: white; max-width: 400px; width: 100%;">
+                <h2 style="color: #333; margin-bottom: 1rem;">🔐 Access Required</h2>
+                <p style="color: #666; margin-bottom: 2rem;">Please enter the password to access<br><strong>Alex - Aniket Solutions AI Assistant</strong></p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True
+    )
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.text_input(
+            "Password", 
+            type="password", 
+            on_change=password_entered, 
+            key="password",
+            placeholder="Enter password...",
+            help="Contact your administrator for the password"
+        )
+        
+        if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+            st.error("❌ Incorrect password. Please try again.")
+        
+        st.info("💡 **Demo Access:** Use password 'aniket2024' to explore the chatbot")
+
+    return False
+    """Fetch content from company URL"""
 def fetch_company_content():
     """Fetch content from company URL"""
     try:
@@ -1084,11 +1143,12 @@ def verify_otp(entered_otp, stored_otp_data):
 def moderate_content(text):
     """Check content using OpenAI Moderation API"""
     try:
-        if not st.session_state.get("openai_client"):
-            return False, "OpenAI client not initialized"
+        # Check if OpenAI client is available
+        if not client:
+            return True, "Content moderation unavailable - proceeding"
         
         # Use OpenAI Moderation API
-        response = st.session_state.openai_client.moderations.create(input=text)
+        response = client.moderations.create(input=text)
         
         moderation_result = response.results[0]
         
@@ -1116,7 +1176,7 @@ def moderate_content(text):
         
     except Exception as e:
         # Log error but don't block user - moderation failure shouldn't stop legitimate users
-        return True, f"Moderation check failed: {str(e)}"
+        return True, f"Moderation check failed, proceeding: {str(e)}"
 
 def detect_gibberish(text):
     """Detect if text is gibberish or meaningless"""
@@ -1190,8 +1250,8 @@ def detect_gibberish(text):
 def advanced_gibberish_check_with_openai(text):
     """Use OpenAI to detect more sophisticated gibberish"""
     try:
-        if not st.session_state.get("openai_client"):
-            return False, "OpenAI client not initialized"
+        if not client:
+            return False, "AI gibberish check unavailable"
         
         # Use OpenAI to analyze if text is meaningful
         prompt = f"""
@@ -1213,7 +1273,7 @@ def advanced_gibberish_check_with_openai(text):
         Response:
         """
         
-        response = st.session_state.openai_client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=10,
@@ -1372,13 +1432,17 @@ def comprehensive_email_validation(email):
 
 # Configure the page
 st.set_page_config(
-    page_title="Aniket Solutions Chat Assistant",
+    page_title="Aniket Solutions AI Assistant",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better styling
+# Check password before showing the app
+if not check_password():
+    st.stop()  # Stop execution if password is incorrect
+
+# Custom CSS for better styling with avatars
 st.markdown("""
 <style>
     .stApp {
@@ -1391,26 +1455,49 @@ st.markdown("""
         border-radius: 0.5rem;
         margin-bottom: 1rem;
         display: flex;
-        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
     }
     
     .chat-message.user {
         background-color: #e3f2fd;
-        margin-left: 20%;
+        margin-left: 10%;
+        flex-direction: row-reverse;
     }
     
     .chat-message.assistant {
         background-color: #f5f5f5;
-        margin-right: 20%;
+        margin-right: 10%;
+    }
+    
+    .chat-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        border: 2px solid #e0e0e0;
+    }
+    
+    .chat-content {
+        flex: 1;
+        min-width: 0;
     }
     
     .chat-message .message-content {
-        margin-top: 0.5rem;
+        margin-top: 0.25rem;
+        word-wrap: break-word;
     }
     
     .chat-message .message-time {
         font-size: 0.8rem;
         color: #666;
+        margin-bottom: 0.25rem;
+    }
+    
+    .chat-message .sender-name {
+        font-weight: bold;
+        color: #333;
+        font-size: 0.9rem;
         margin-bottom: 0.25rem;
     }
     
@@ -1423,6 +1510,13 @@ st.markdown("""
         padding: 1rem 0;
         border-bottom: 2px solid #f0f0f0;
         margin-bottom: 2rem;
+    }
+    
+    .avatar-selector {
+        padding: 1rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1517,6 +1611,10 @@ if "api_key" not in st.session_state:
         st.session_state.api_key = OPENAI_API_KEY
     else:
         st.session_state.api_key = ""
+
+# Initialize avatar selection
+if "selected_avatar" not in st.session_state:
+    st.session_state.selected_avatar = ALEX_AVATAR_URL
 
 # Initialize OpenAI client in session state
 if "openai_client" not in st.session_state:
@@ -1617,6 +1715,88 @@ with st.sidebar:
     if st.button("🔗 Open Contact Form", use_container_width=True):
         st.markdown(f"[Open Contact Form]({CONTACT_FORM_URL})")
     
+    # Password Management
+    st.subheader("🔐 Password Settings")
+    
+    current_password = st.text_input(
+        "Current Password",
+        type="password",
+        help="Enter the current chatbot password"
+    )
+    
+    if current_password == CHATBOT_PASSWORD:
+        st.success("✅ Current password verified")
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("🚪 Logout", use_container_width=True):
+                st.session_state["password_correct"] = False
+                st.success("Logged out successfully!")
+                st.rerun()
+        
+        with col2:
+            if st.button("🔄 Reset Session", use_container_width=True):
+                for key in list(st.session_state.keys()):
+                    if key != "password_correct":
+                        del st.session_state[key]
+                st.success("Session reset!")
+                st.rerun()
+    elif current_password:
+        st.error("❌ Incorrect password")
+    
+    st.caption(f"💡 Demo password: aniket2024")
+    
+    st.divider()
+    
+    # Avatar Customization
+    st.subheader("🎭 Avatar Settings")
+    
+    avatar_choice = st.selectbox(
+        "Choose Alex's Avatar Style",
+        options=["default", "support_agent", "professional", "friendly", "tech", "custom"],
+        format_func=lambda x: {
+            "default": "🤖 Default (Friendly Tech)",
+            "support_agent": "🎧 Support Agent (Premium)",
+            "professional": "💼 Professional",
+            "friendly": "😊 Friendly",
+            "tech": "👨‍💻 Tech Expert",
+            "custom": "🎨 Custom URL"
+        }[x],
+        key="avatar_selector"
+    )
+    
+    # Update avatar based on selection
+    if avatar_choice == "default":
+        new_avatar = ALEX_AVATAR_URL
+    else:
+        new_avatar = ALTERNATIVE_AVATARS[avatar_choice]
+    
+    if st.session_state.selected_avatar != new_avatar:
+        st.session_state.selected_avatar = new_avatar
+        st.rerun()
+    
+    # Preview current avatar
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.markdown(f"""
+        <div style="text-align: center;">
+            <img src="{st.session_state.selected_avatar}" style="width: 60px; height: 60px; border-radius: 50%; border: 2px solid #e0e0e0;">
+            <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #666;">Alex's Avatar</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if avatar_choice == "custom":
+            custom_url = st.text_input(
+                "Custom Avatar URL",
+                placeholder="https://example.com/avatar.jpg",
+                help="Enter a direct link to an image (JPG, PNG, SVG)"
+            )
+            if custom_url and st.button("Apply Custom Avatar"):
+                st.session_state.selected_avatar = custom_url
+                st.success("Custom avatar applied!")
+                st.rerun()
+    
     st.divider()
     
     # AWS SES status (only show if not configured)
@@ -1649,11 +1829,12 @@ with st.sidebar:
     
     # Content Moderation Status
     st.subheader("🛡️ Content Moderation")
-    if st.session_state.get("openai_client"):
+    if client:
         st.success("✅ Content moderation active")
         st.caption("OpenAI Moderation API + Gibberish Detection")
     else:
         st.warning("⚠️ Content moderation requires OpenAI API")
+        st.caption("Basic gibberish detection only")
     
     st.divider()
     
@@ -1731,9 +1912,9 @@ with st.sidebar:
         )
 
 # Main chat interface
-st.markdown('<div class="main-header"><h1>🤖 Alex - Aniket Solutions AI Assistant</h1><p>Your intelligent technology consultant powered by AI</p></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header"><h1>🤖 Alex - Aniket Solutions AI Assistant</h1><p>Your intelligent technology consultant with a friendly face</p></div>', unsafe_allow_html=True)
 
-# Display chat messages
+# Display chat messages with avatars
 chat_container = st.container()
 
 with chat_container:
@@ -1741,10 +1922,22 @@ with chat_container:
         message_class = "user" if message["role"] == "user" else "assistant"
         timestamp = message.get("timestamp", "")
         
+        # Choose avatar based on role
+        if message["role"] == "user":
+            avatar_url = USER_AVATAR_URL
+            sender_name = "You"
+        else:
+            avatar_url = st.session_state.get("selected_avatar", ALEX_AVATAR_URL)
+            sender_name = "Alex"
+        
         st.markdown(f"""
         <div class="chat-message {message_class}">
-            <div class="message-time">{timestamp}</div>
-            <div class="message-content">{message["content"]}</div>
+            <img src="{avatar_url}" class="chat-avatar" alt="{sender_name}">
+            <div class="chat-content">
+                <div class="sender-name">{sender_name}</div>
+                <div class="message-time">{timestamp}</div>
+                <div class="message-content">{message["content"]}</div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
