@@ -556,8 +556,35 @@ def get_smart_company_response(query):
     
     query_lower = query.lower()
     
+    # Check for follow-up responses to avoid loops
+    if any(phrase in query_lower for phrase in [
+        'vendor management', 'vendor', 'supplier management', 'approval workflows', 
+        'compliance tracking', 'biggest challenge', 'my challenge', 'our challenge'
+    ]):
+        return f"""Great! For vendor management challenges, **AniSol Procurement** offers:
+
+**Vendor Management Solutions:**
+• **Centralized Vendor Database**: Single source for all supplier information
+• **Performance Tracking**: Monitor delivery times, quality, and pricing
+• **Vendor Scoring**: Automated rating system based on performance metrics
+• **Contract Management**: Track agreements and renewal dates
+• **Supplier Onboarding**: Streamlined process for new vendors
+
+**Approval Workflow Benefits:**
+• **Configurable Rules**: Set approval limits by cost, vessel, department
+• **Multi-level Approvals**: Route high-value purchases appropriately
+• **Mobile Approvals**: Approve requests from anywhere
+• **Audit Trail**: Complete history of all approval decisions
+
+**Compliance Features:**
+• **ISM Compliance**: Built-in audit trails for maritime regulations
+• **Budget Controls**: Prevent overspending with real-time budget tracking
+• **Document Management**: Store all procurement-related documents
+
+Would you like to see a demo of how this would work for your specific operation, or do you have questions about implementation? For detailed setup and pricing, please contact our team at info@aniketsolutions.com"""
+
     # For crew management specific queries
-    if any(word in query_lower for word in ['crew management', 'crew software', 'maritime crew', 'crewing']):
+    elif any(word in query_lower for word in ['crew management', 'crew software', 'maritime crew', 'crewing']):
         return f"""**AniSol Crewing Module - Complete Crew Management Solution**
 
 Our **AniSol Crewing** system handles all aspects of crew management:
@@ -576,7 +603,7 @@ Our **AniSol Crewing** system handles all aspects of crew management:
 - Secure backups and audit trails
 - Designed by seafarers for real maritime workflows
 
-What specific crew management challenges are you facing? I can provide more details on how our system addresses them."""
+For specific implementation details and pricing, please contact our specialists at info@aniketsolutions.com or visit our contact form."""
 
     # For inventory/stores queries
     elif any(word in query_lower for word in ['inventory', 'stock', 'spare', 'consumable', 'stores']):
@@ -597,7 +624,7 @@ Our inventory system is designed specifically for maritime operations:
 - Connects to AniSol Procurement for automated ordering
 - ERP/Accounts ready for inventory valuation
 
-What size fleet are you managing? This helps me recommend the right configuration approach."""
+For detailed configuration options and pricing, please contact our team at info@aniketsolutions.com"""
 
     # For maintenance/TMS queries
     elif any(word in query_lower for word in ['maintenance', 'tms', 'technical management', 'planned maintenance']):
@@ -620,10 +647,10 @@ Built by seafarers for real ship operations:
 
 **Dashboard & Analytics**: Real-time vessel health monitoring with drill-down capabilities
 
-What type of vessels do you operate? Different vessel types benefit from different TMS configurations."""
+For vessel-specific configuration and implementation, please contact our specialists at info@aniketsolutions.com"""
 
-    # For procurement queries
-    elif any(word in query_lower for word in ['procurement', 'purchasing', 'supplier', 'vendor']):
+    # For procurement queries - avoid the loop by being more specific
+    elif any(word in query_lower for word in ['procurement', 'purchasing', 'supplier']) and not any(phrase in query_lower for phrase in ['vendor management', 'biggest challenge']):
         return f"""**AniSol Procurement - AI-Powered Maritime Purchasing**
 
 Streamline your entire procurement process:
@@ -643,7 +670,7 @@ Streamline your entire procurement process:
 
 **Integration Ready**: Works seamlessly with inventory and technical systems
 
-What's your biggest procurement challenge - vendor management, approval workflows, or compliance tracking?"""
+For detailed implementation and pricing information, please contact our team at info@aniketsolutions.com"""
 
     # For AI/technology services
     elif any(word in query_lower for word in ['ai', 'artificial intelligence', 'chatbot', 'automation']):
@@ -670,7 +697,7 @@ We help businesses harness AI for practical results:
 - Finance: Fraud detection
 - Maritime: Operational optimization
 
-What repetitive tasks or decision-making processes in your business could benefit from AI automation?"""
+For AI project consultation and development timelines, please contact our team at info@aniketsolutions.com"""
 
     # For custom development
     elif any(word in query_lower for word in ['custom development', 'software', 'application', 'web app']):
@@ -699,7 +726,7 @@ We build software solutions tailored to your specific business needs:
 
 **Industries We Serve**: Manufacturing, Healthcare, Finance, Logistics, Maritime, Retail, Education
 
-What specific business process needs automation or improvement?"""
+For project consultation and development quotes, please contact our team at info@aniketsolutions.com"""
 
     # For mobile app queries
     elif any(word in query_lower for word in ['mobile', 'app', 'ios', 'android', 'smartphone']):
@@ -727,7 +754,7 @@ Transform your mobile strategy with professional app development:
 - Fleet management
 - Remote workers
 
-What type of mobile functionality would help your team work more efficiently?"""
+For mobile app development consultation and estimates, please contact our team at info@aniketsolutions.com"""
 
     # For general company/services inquiry
     elif any(word in query_lower for word in ['services', 'company', 'about', 'solutions']):
@@ -753,11 +780,26 @@ What type of mobile functionality would help your team work more efficiently?"""
 • **Proven Track Record**: 20+ years of successful implementations
 • **Cost-Effective**: Practical solutions that deliver ROI
 
-Which area interests you most - our maritime solutions or general technology services?"""
+For detailed information about any of our solutions, please contact our team at info@aniketsolutions.com"""
 
-    # If no specific match, use AI for a knowledgeable response
+    # If no specific match, provide a helpful general response
     else:
-        return generate_ai_response(query, st.session_state.messages)
+        return f"""I'd be happy to help you with information about our technology solutions. 
+
+Based on your inquiry, our team can provide specific details about:
+• Implementation approaches for your situation
+• Pricing and timeline estimates  
+• Integration with your existing systems
+• Customization options available
+
+For detailed answers tailored to your specific requirements, please contact our specialists:
+
+📧 **Email**: info@aniketsolutions.com
+🌐 **Contact Form**: https://www.aniketsolutions.com/contact
+
+Our team typically responds within 24 hours with comprehensive information.
+
+Is there anything else about our general capabilities I can help clarify?"""
 
 def generate_otp():
     """Generate a 6-digit OTP"""
