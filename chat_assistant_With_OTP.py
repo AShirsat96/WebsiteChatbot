@@ -1295,29 +1295,16 @@ st.markdown("""
     
     .chat-message.user {
         background-color: #e3f2fd;
-        margin-left: 20%;
+        margin-left: 10%;
     }
     
     .chat-message.assistant {
         background-color: #f5f5f5;
-        margin-right: 20%;
+        margin-right: 10%;
     }
     
-    .chat-message .message-content {
-        margin-top: 0.5rem;
-    }
-    
-    .chat-message .message-time {
-        font-size: 0.8rem;
-        color: #666;
-        margin-bottom: 0.25rem;
-    }
-    
-    .chat-message .sender-name {
-        font-weight: bold;
-        color: #333;
-        font-size: 0.9rem;
-        margin-bottom: 0.25rem;
+    .chat-message img {
+        object-fit: cover;
     }
     
     .sidebar .element-container {
@@ -1329,6 +1316,14 @@ st.markdown("""
         padding: 1rem 0;
         border-bottom: 2px solid #f0f0f0;
         margin-bottom: 2rem;
+    }
+    
+    /* Ensure images load properly */
+    .chat-message img {
+        max-width: 45px;
+        max-height: 45px;
+        width: 45px;
+        height: 45px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1714,14 +1709,24 @@ with chat_container:
         message_class = "user" if message["role"] == "user" else "assistant"
         timestamp = message.get("timestamp", "")
         
-        # Choose sender name based on role
-        sender_name = "You" if message["role"] == "user" else "Alex"
+        # Choose sender name and avatar based on role
+        if message["role"] == "user":
+            sender_name = "You"
+            avatar_url = USER_AVATAR_URL
+        else:
+            sender_name = "Alex"
+            avatar_url = st.session_state.selected_avatar
         
         st.markdown(f"""
         <div class="chat-message {message_class}">
-            <div class="sender-name">{sender_name}</div>
-            <div class="message-time">{timestamp}</div>
-            <div class="message-content">{message["content"]}</div>
+            <div style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px;">
+                <img src="{avatar_url}" style="width: 45px; height: 45px; border-radius: 50%; border: 2px solid #e0e0e0; flex-shrink: 0;">
+                <div style="flex: 1; min-width: 0;">
+                    <div class="sender-name" style="font-weight: bold; color: #333; font-size: 0.9rem; margin-bottom: 2px;">{sender_name}</div>
+                    <div class="message-time" style="font-size: 0.8rem; color: #666; margin-bottom: 6px;">{timestamp}</div>
+                    <div class="message-content" style="line-height: 1.5; word-wrap: break-word;">{message["content"]}</div>
+                </div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
 
