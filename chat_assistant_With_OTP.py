@@ -45,7 +45,7 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
     )
 
 # Avatar Configuration
-ALEX_AVATAR_URL = "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=b6e3f4&clothesColor=262e33&eyebrowType=default&eyeType=default&facialHairColor=auburn&facialHairType=default&hairColor=auburn&hatColor=ff5c5c&mouthType=smile&skinColor=light&topType=shortHairShortWaved"
+ALEX_AVATAR_URL = "https://raw.githubusercontent.com/AShirsat96/WebsiteChatbot/main/Alex_AI_Avatar.png"
 USER_AVATAR_URL = "https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=4f46e5&fontSize=40"
 
 # Alternative avatar options (you can change these URLs)
