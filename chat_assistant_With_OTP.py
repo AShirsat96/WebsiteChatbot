@@ -270,536 +270,250 @@ def fetch_company_content():
     except Exception as e:
         return f"Error fetching content: {str(e)}"
 
-def search_company_info(query):
-    """Search for relevant information in company content and knowledge base"""
+def get_product_response(query):
+    """Get detailed response based on product knowledge base"""
     query_lower = query.lower()
     
-    # Enhanced keyword matching for products and services
-    product_keywords = {
-        'inventory': ['inventory', 'stock', 'spare', 'consumable', 'rob', 'stores'],
-        'payroll': ['payroll', 'wages', 'salary', 'cash', 'crew payment', 'master cash'],
-        'crewing': ['crew', 'crewing', 'staff', 'personnel', 'maritime crew', 'seafarer'],
-        'tms': ['tms', 'maintenance', 'technical', 'planned maintenance', 'pms', 'technical management'],
-        'procurement': ['procurement', 'purchasing', 'requisition', 'po', 'purchase order', 'supplier', 'vendor'],
-        'custom_development': ['custom', 'development', 'software', 'application', 'web app', 'custom software'],
-        'mobile': ['mobile', 'app', 'ios', 'android', 'smartphone', 'tablet'],
-        'ai': ['ai', 'artificial intelligence', 'machine learning', 'chatbot', 'generative ai', 'gpt'],
-        'data': ['data', 'database', 'migration', 'analytics', 'reporting', 'etl'],
-        'integration': ['integration', 'api', 'connect', 'sync', 'system integration']
-    }
-    
-    # Check for specific product/service mentions
-    for category, keywords in product_keywords.items():
-        if any(keyword in query_lower for keyword in keywords):
-            return True
-    
-    # General company keywords
-    general_keywords = [
-        'service', 'product', 'solution', 'technology', 'marine', 'iot',
-        'singapore', 'global', 'experience', 'cost effective', 'efficient',
-        'maritime', 'shipping', 'vessel', 'ship'
-    ]
-    
-    # Check if query contains relevant keywords
-    for keyword in general_keywords:
-        if keyword in query_lower:
-            return True
-    
-    return False
-
-# Enhanced AI Assistant Configuration
-AI_ASSISTANT_PROMPT = """
-You are Alex, a professional and knowledgeable AI assistant for Aniket Solutions, a leading technology solutions provider established in 2004. You are here to help potential clients understand our services and guide them toward the right solutions for their business needs.
-
-## About Aniket Solutions:
-- Established: February 2004 in Singapore
-- Global presence: USA, UK, Cyprus, Greece, India, Japan, Singapore, Hong Kong
-- Expertise: Maritime technology solutions and general technology services
-- Focus: Cost-effective, efficient solutions with understanding of diverse work cultures
-
-## Your Role:
-- Be warm, professional, and consultative (not salesy)
-- Ask intelligent follow-up questions to understand client needs
-- Provide detailed information about relevant solutions
-- Guide conversations toward booking consultations or demos
-- Handle technical questions with expertise
-- Maintain conversation flow naturally
-
-## Key Services & Products:
-
-### Maritime Solutions:
-1. **AniSol TMS** - Technical Management System for vessel maintenance, inspections, certificates
-2. **AniSol Procurement** - AI-powered maritime purchasing with vendor management
-3. **AniSol Inventory Control** - Fleet-wide spare parts and consumables management
-4. **AniSol Crewing Module** - Complete crew management including payroll and compliance
-5. **AniSol Payroll & Master Cash** - Crew financial management and petty cash systems
-
-### Technology Services:
-1. **Custom Application Development** - Bespoke software solutions for unique business needs
-2. **Mobile Solutions** - Native iOS/Android apps and cross-platform development
-3. **AI & Machine Learning** - Generative AI, chatbots, predictive analytics, automation
-4. **Data Services** - Migration, warehousing, analytics, database modernization
-5. **System Integration** - API development, ERP connections, legacy system connectivity
-6. **AI Chatbots & Virtual Assistants** - 24/7 customer service automation
-
-## When You Can't Fully Answer:
-If you encounter questions about:
-- Specific pricing, quotes, or detailed cost estimates
-- Complex technical specifications requiring engineering review
-- Custom requirements that need detailed analysis
-- Implementation timelines for specific projects
-- Legal, compliance, or regulatory specifics
-- Questions outside your knowledge base
-- Requests requiring human expertise or decision-making
-
-ALWAYS gracefully direct them to our contact form by saying something like:
-"That's an excellent question that deserves a detailed response from our specialists. I'd recommend filling out our contact form so our team can provide you with specific information tailored to your situation. You can reach us at [CONTACT_FORM_LINK] or email us directly at info@aniketsolutions.com."
-
-## Conversation Guidelines:
-- Always acknowledge and validate the user's specific industry or business type
-- Ask clarifying questions to understand their current challenges
-- Recommend solutions based on their specific needs, not just list features
-- Offer to schedule consultations, demos, or provide detailed proposals
-- If you don't have specific information, offer to connect them with a specialist
-- Keep responses conversational and appropriately detailed
-- Suggest next steps (consultation, demo, proposal, contact form)
-
-## Contact Information to Provide:
-- Contact Form: [Direct users to fill out contact form for detailed inquiries]
-- Email: info@aniketsolutions.com
-- Website: www.aniketsolutions.com
-
-## Example Responses Style:
-- "That's an interesting challenge in [their industry]. Many of our clients in [similar sector] have found success with..."
-- "Based on what you've described, I think our [specific solution] could be particularly valuable because..."
-- "Let me ask you a few questions to better understand your current setup..."
-- "That's a great question that requires input from our technical team. I'd recommend reaching out through our contact form..."
-- "For specific pricing and implementation details, our specialists can provide a customized proposal. Please contact us at..."
-
-Remember: You're not just answering questions - you're having intelligent business conversations that lead to meaningful solutions or appropriate handoffs to human experts.
-"""
-
-# Contact form and escalation configuration
-CONTACT_FORM_URL = "https://www.aniketsolutions.com/contact"  # Update with actual URL
-CONTACT_EMAIL = "info@aniketsolutions.com"
-
-def should_escalate_to_contact_form(user_message):
-    """Determine if query should be escalated to contact form - only for very specific cases"""
-    escalation_keywords = [
-        # Only very specific pricing requests
-        'detailed pricing', 'exact cost', 'price quote', 'cost estimate', 'budget proposal',
-        
-        # Only very specific technical implementation details
-        'detailed implementation plan', 'migration timeline', 'deployment schedule',
-        
-        # Legal and contract specifics
-        'contract terms', 'legal agreement', 'sla details', 'service agreement',
-        
-        # Explicit requests for human contact
-        'speak to sales', 'talk to sales team', 'contact sales', 'human sales rep',
-        'account manager', 'sales consultant'
-    ]
-    
-    message_lower = user_message.lower()
-    # Only escalate if the query contains very specific escalation phrases
-    return any(keyword in message_lower for keyword in escalation_keywords)
-
-def generate_ai_response(user_message, conversation_history=None):
-    """Generate intelligent AI response with escalation handling"""
-    try:
-        if not st.session_state.get("openai_client"):
-            return generate_contact_form_response("I'm experiencing technical difficulties at the moment.")
-        
-        # Check if this should be escalated immediately
-        if should_escalate_to_contact_form(user_message):
-            return generate_contact_form_response(
-                f"This requires detailed information from our specialists."
-            )
-        
-        # Prepare conversation context
-        messages = [{"role": "system", "content": AI_ASSISTANT_PROMPT.replace("[CONTACT_FORM_LINK]", CONTACT_FORM_URL)}]
-        
-        # Add conversation history for context (last 6 messages to avoid repetition)
-        if conversation_history:
-            recent_history = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
-            for msg in recent_history:
-                if msg["role"] in ["user", "assistant"]:
-                    # Skip timestamps and clean content
-                    content = msg["content"].strip()
-                    if content and len(content) > 10:  # Avoid very short or empty messages
-                        messages.append({
-                            "role": msg["role"], 
-                            "content": content
-                        })
-        
-        # Add current user message
-        messages.append({"role": "user", "content": user_message})
-        
-        # Generate response with adjusted parameters
-        response = st.session_state.openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            temperature=0.8,  # Slightly higher for variety
-            max_tokens=200,   # Shorter responses
-            presence_penalty=0.3,  # Encourage new topics
-            frequency_penalty=0.5  # Reduce repetition significantly
-        )
-        
-        ai_response = response.choices[0].message.content.strip()
-        
-        # Check if response is too similar to recent responses
-        if conversation_history and len(conversation_history) > 1:
-            last_assistant_msg = None
-            for msg in reversed(conversation_history):
-                if msg["role"] == "assistant":
-                    last_assistant_msg = msg["content"]
-                    break
-            
-            if last_assistant_msg and similarity_check(ai_response, last_assistant_msg):
-                # Generate a different response if too similar
-                follow_up_prompt = f"The user said: {user_message}. Please provide a different, more specific response without repeating previous information. Focus on next steps or ask for more details."
-                
-                response = st.session_state.openai_client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": AI_ASSISTANT_PROMPT.replace("[CONTACT_FORM_LINK]", CONTACT_FORM_URL)},
-                        {"role": "user", "content": follow_up_prompt}
-                    ],
-                    temperature=0.9,
-                    max_tokens=150,
-                    presence_penalty=0.5,
-                    frequency_penalty=0.7
-                )
-                ai_response = response.choices[0].message.content.strip()
-        
-        # Check if AI response indicates it can't fully answer
-        uncertainty_indicators = [
-            "i don't know", "i'm not sure", "i can't provide", "i don't have",
-            "that's beyond my knowledge", "i'm unable to", "i cannot determine",
-            "that requires", "you should contact", "speak with our team"
-        ]
-        
-        if any(indicator in ai_response.lower() for indicator in uncertainty_indicators):
-            return generate_contact_form_response(
-                "This requires detailed expertise from our team."
-            )
-        
-        return ai_response
-        
-    except Exception as e:
-        return generate_contact_form_response("I'm experiencing technical difficulties at the moment.")
-
-def similarity_check(text1, text2):
-    """Check if two texts are too similar (basic similarity check)"""
-    if not text1 or not text2:
-        return False
-    
-    # Simple similarity check based on common words
-    words1 = set(text1.lower().split())
-    words2 = set(text2.lower().split())
-    
-    if len(words1) == 0 or len(words2) == 0:
-        return False
-    
-    common_words = words1.intersection(words2)
-    similarity_ratio = len(common_words) / min(len(words1), len(words2))
-    
-    return similarity_ratio > 0.7  # More than 70% similar words
-
-def generate_contact_form_response(context_message):
-    """Generate a professional response directing users to contact form"""
-    contact_responses = [
-        f"""
-{context_message}
-
-I'd be happy to connect you with our specialists who can provide detailed, personalized information for your specific situation. Here are the best ways to reach our team:
-
-**📋 Contact Form:** Please fill out our contact form at {CONTACT_FORM_URL} - this ensures your inquiry reaches the right specialist who can provide comprehensive answers.
-
-**📧 Direct Email:** You can also email us at {CONTACT_EMAIL} with your specific questions and requirements.
-
-**⚡ What to Include:**
-- Your specific requirements or challenges
-- Industry/business context  
-- Timeline considerations
-- Any technical specifications needed
-
-Our team typically responds within 24 hours with detailed information, proposals, or to schedule a consultation call.
-
-Is there anything else about our general capabilities I can help clarify while you're here?
-        """,
-        
-        f"""
-{context_message}
-
-For the most accurate and detailed response, I'd recommend reaching out to our specialist team who can provide you with comprehensive information tailored to your specific needs.
-
-**🎯 Best Contact Options:**
-
-• **Contact Form:** {CONTACT_FORM_URL} (recommended - gets routed to the right expert)
-• **Email:** {CONTACT_EMAIL}
-• **Website:** www.aniketsolutions.com
-
-**💡 Pro Tip:** When you contact us, mentioning your industry, current challenges, and specific requirements helps our team provide you with the most relevant solutions and accurate timelines.
-
-Our specialists are experienced in handling complex requirements and can provide detailed proposals, technical specifications, and implementation roadmaps.
-
-What other general questions about our services can I help with in the meantime?
-        """
-    ]
-    
-    import random
-    return random.choice(contact_responses)
-
-def get_smart_company_response(query):
-    """Enhanced company response that uses knowledge base first, then AI"""
-    
-    query_lower = query.lower()
-    
-    # Check for follow-up responses to avoid loops
-    if any(phrase in query_lower for phrase in [
-        'vendor management', 'vendor', 'supplier management', 'approval workflows', 
-        'compliance tracking', 'biggest challenge', 'my challenge', 'our challenge'
-    ]):
-        return f"""Great! For vendor management challenges, **AniSol Procurement** offers:
-
-**Vendor Management Solutions:**
-• **Centralized Vendor Database**: Single source for all supplier information
-• **Performance Tracking**: Monitor delivery times, quality, and pricing
-• **Vendor Scoring**: Automated rating system based on performance metrics
-• **Contract Management**: Track agreements and renewal dates
-• **Supplier Onboarding**: Streamlined process for new vendors
-
-**Approval Workflow Benefits:**
-• **Configurable Rules**: Set approval limits by cost, vessel, department
-• **Multi-level Approvals**: Route high-value purchases appropriately
-• **Mobile Approvals**: Approve requests from anywhere
-• **Audit Trail**: Complete history of all approval decisions
-
-**Compliance Features:**
-• **ISM Compliance**: Built-in audit trails for maritime regulations
-• **Budget Controls**: Prevent overspending with real-time budget tracking
-• **Document Management**: Store all procurement-related documents
-
-Would you like to see a demo of how this would work for your specific operation, or do you have questions about implementation? For detailed setup and pricing, please contact our team at info@aniketsolutions.com"""
-
-    # For crew management specific queries
-    elif any(word in query_lower for word in ['crew management', 'crew software', 'maritime crew', 'crewing']):
-        return f"""**AniSol Crewing Module - Complete Crew Management Solution**
-
-Our **AniSol Crewing** system handles all aspects of crew management:
-
-**Key Features:**
-• **Crew Payroll & Wages**: Full lifecycle payroll, wages, overtime, bonuses, allowances
-• **Document Management**: Centralized repository with expiry alerts for certificates
-• **Crew Scheduling**: Planning, monitoring, contracts, rotations, shore leave
-• **Compliance Tracking**: Flag state, STCW, MLC compliance automation
-• **Performance Analytics**: Structured workflows and competency assessments
-• **Multi-Currency Support**: Exchange rates, multi-company/agency setups
-
-**Built for Maritime Operations:**
-- Cloud-first, scalable infrastructure
-- Seamless integration with other AniSol modules
-- Secure backups and audit trails
-- Designed by seafarers for real maritime workflows
-
-For specific implementation details and pricing, please contact our specialists at info@aniketsolutions.com or visit our contact form."""
-
-    # For inventory/stores queries
-    elif any(word in query_lower for word in ['inventory', 'stock', 'spare', 'consumable', 'stores']):
+    # Product matching with better keyword coverage
+    if any(word in query_lower for word in ['inventory', 'stock', 'spare', 'consumable', 'stores', 'rob']):
         return f"""**AniSol Inventory Control - Fleet-Wide Inventory Management**
 
-Our inventory system is designed specifically for maritime operations:
+{PRODUCT_KNOWLEDGE_BASE['inventory_control']}
 
-**Key Features:**
-• **Spares & Consumables**: Separate tracking for machinery spares and consumable stores
-• **ROB Tracking**: Real-time Remaining Onboard quantities
-• **Automated Reordering**: Smart alerts and procurement integration
-• **Component Mapping**: Link spare parts to specific systems/equipment
-• **Transaction History**: Complete audit trails with export capability
-• **Ship-Shore Sync**: Works offline, syncs when connected
+**Key Benefits:**
+• Real-time inventory tracking across your entire fleet
+• Automated alerts for low stock levels
+• Seamless integration with maintenance and procurement systems
+• Works offline on ships, syncs when connected
 
-**Integration Benefits:**
-- Links with AniSol TMS for maintenance-driven consumption
-- Connects to AniSol Procurement for automated ordering
-- ERP/Accounts ready for inventory valuation
+Would you like to know more about specific features or see a demo? For detailed implementation plans and pricing, please contact our specialists at info@aniketsolutions.com"""
+
+    elif any(word in query_lower for word in ['payroll', 'wages', 'salary', 'cash', 'crew payment', 'master cash']):
+        return f"""**AniSol Payroll & Master Cash System**
+
+{PRODUCT_KNOWLEDGE_BASE['payroll_master_cash']}
+
+**Key Benefits:**
+• Automated payroll calculations with maritime compliance
+• Multi-currency support for global operations
+• Complete audit trails for all transactions
+• Seamless integration with accounting systems
 
 For detailed configuration options and pricing, please contact our team at info@aniketsolutions.com"""
 
-    # For maintenance/TMS queries
-    elif any(word in query_lower for word in ['maintenance', 'tms', 'technical management', 'planned maintenance']):
+    elif any(word in query_lower for word in ['crew', 'crewing', 'staff', 'personnel', 'maritime crew', 'seafarer']):
+        return f"""**AniSol Crewing Module - Complete Crew Management**
+
+{PRODUCT_KNOWLEDGE_BASE['crewing_module']}
+
+**Key Benefits:**
+• Complete crew lifecycle management
+• Automated compliance tracking
+• Performance analytics and reporting
+• Cloud-first, scalable infrastructure
+
+For specific implementation details and pricing, please contact our specialists at info@aniketsolutions.com"""
+
+    elif any(word in query_lower for word in ['tms', 'maintenance', 'technical', 'planned maintenance', 'pms']):
         return f"""**AniSol TMS - Technical Management System**
 
-Built by seafarers for real ship operations:
+{PRODUCT_KNOWLEDGE_BASE['tms']}
 
-**Maintenance Management:**
-• **Planned Maintenance**: Calendar, counter, and condition-based scheduling
-• **Unplanned Maintenance**: One-click breakdown reporting
-• **Work Orders**: Complete generation and closure with audit trails
-• **Inspections**: PSC, Class Surveys, and defect tracking
-
-**Key Advantages:**
-• **Unified Interface**: Most operations from a single screen
-• **No Dedicated Server**: Any onboard computer can host
-• **Low Bandwidth**: Ultra-efficient ship-shore synchronization
-• **Inventory Integration**: Direct links between spares and work orders
-• **Offline Capable**: Works independently when internet is unavailable
-
-**Dashboard & Analytics**: Real-time vessel health monitoring with drill-down capabilities
+**Key Benefits:**
+• Designed by seafarers for real ship operations
+• Ultra-low bandwidth usage for satellite connections
+• Complete maintenance history and analytics
+• No dedicated server needed
 
 For vessel-specific configuration and implementation, please contact our specialists at info@aniketsolutions.com"""
 
-    # For procurement queries - avoid the loop by being more specific
-    elif any(word in query_lower for word in ['procurement', 'purchasing', 'supplier']) and not any(phrase in query_lower for phrase in ['vendor management', 'biggest challenge']):
+    elif any(word in query_lower for word in ['procurement', 'purchasing', 'supplier', 'vendor', 'po', 'purchase order']):
         return f"""**AniSol Procurement - AI-Powered Maritime Purchasing**
 
-Streamline your entire procurement process:
+{PRODUCT_KNOWLEDGE_BASE['procurement']}
 
-**Smart Features:**
-• **AI-Powered Analytics**: Intelligent procurement insights and recommendations
-• **Multiple Requisition Types**: Spares, repairs, services, adhoc requests
-• **Vendor Management**: Centralized supplier database with performance tracking
-• **ShipServ Integration**: Enhanced sourcing and catalog synchronization
-• **Automated Approvals**: Configurable workflows by cost, vessel, and user role
-
-**Compliance & Control:**
-• **Full Audit Trails**: Complete traceability from requisition to invoice
-• **Budget Controls**: Budget codes linked at requisition level
-• **2-way & 3-way Matching**: Automated invoice matching
-• **Low Bandwidth**: No need to wait for vessel email systems
-
-**Integration Ready**: Works seamlessly with inventory and technical systems
+**Key Benefits:**
+• AI-powered procurement analytics
+• Complete vendor management system
+• Automated approval workflows
+• Full audit trails and compliance
 
 For detailed implementation and pricing information, please contact our team at info@aniketsolutions.com"""
 
-    # For AI/technology services
-    elif any(word in query_lower for word in ['ai', 'artificial intelligence', 'chatbot', 'automation']):
-        return f"""**AI & Machine Learning Services**
+    # General product inquiry
+    else:
+        return f"""**AniSol Maritime Software Suite - Complete Fleet Management**
 
-We help businesses harness AI for practical results:
+We offer a comprehensive suite of maritime software products:
 
-**AI Solutions:**
-• **Custom Chatbots**: 24/7 customer service automation
-• **Generative AI**: Content creation and automated responses
-• **Predictive Analytics**: Trend analysis and forecasting
-• **Process Automation**: Intelligent workflow automation
-• **Computer Vision**: Quality control and monitoring
-• **Natural Language Processing**: Document analysis and processing
+🚢 **AniSol TMS** - Technical Management & Maintenance
+🚢 **AniSol Procurement** - AI-Powered Purchasing System
+🚢 **AniSol Inventory Control** - Fleet-Wide Inventory Management
+🚢 **AniSol Crewing Module** - Complete Crew Management
+🚢 **AniSol Payroll & Master Cash** - Crew Financial Management
 
-**Technologies We Use:**
-- Python, TensorFlow, PyTorch, Hugging Face
-- OpenAI APIs, LangChain, custom models
-- Integration with existing business systems
+**All Products Feature:**
+• Ship & Cloud Ready: Work offline, sync when connected
+• Maritime-Specific: Built by seafarers for real operations
+• Integrated Suite: All modules work seamlessly together
+• Compliance Ready: Flag state, STCW, MLC compliance built-in
+• Global Support: Multi-currency, multi-language capabilities
 
-**Industry Applications:**
-- Manufacturing: Predictive maintenance
-- Healthcare: Medical data analysis  
-- Finance: Fraud detection
-- Maritime: Operational optimization
+Which specific product area interests you most? I can provide detailed information about any of our solutions.
 
-For AI project consultation and development timelines, please contact our team at info@aniketsolutions.com"""
+For comprehensive demos and implementation planning, please contact our team at info@aniketsolutions.com"""
 
-    # For custom development
-    elif any(word in query_lower for word in ['custom development', 'software', 'application', 'web app']):
+def get_service_response(query):
+    """Get detailed response based on services knowledge base"""
+    query_lower = query.lower()
+    
+    # Service matching with comprehensive keywords
+    if any(word in query_lower for word in ['custom', 'development', 'software', 'application', 'web app', 'bespoke']):
         return f"""**Custom Application Development Services**
 
-We build software solutions tailored to your specific business needs:
+{SERVICES_KNOWLEDGE_BASE['custom_development']}
 
-**Development Expertise:**
-• **Enterprise Web Applications**: Modern, responsive applications
-• **Custom Software Solutions**: Bespoke applications for unique processes
-• **Legacy Modernization**: Upgrade systems while preserving functionality
-• **API Development**: Flexible, scalable microservices architectures
+**Our Development Process:**
+• **Discovery & Planning**: Understanding your unique requirements
+• **Design & Architecture**: Creating scalable, maintainable solutions
+• **Agile Development**: Iterative development with regular feedback
+• **Testing & QA**: Comprehensive testing for reliability
+• **Deployment & Support**: Ongoing maintenance and updates
 
-**Technologies:**
-- Frontend: React, Angular, Vue.js
-- Backend: Node.js, Python, Java, .NET
-- Databases: PostgreSQL, MySQL, MongoDB
-- Cloud: AWS, Azure, Google Cloud
-
-**Our Process:**
-1. Discovery & Planning
-2. Design & Architecture  
-3. Agile Development
-4. Testing & QA
-5. Deployment & Support
-
-**Industries We Serve**: Manufacturing, Healthcare, Finance, Logistics, Maritime, Retail, Education
+**Why Choose Our Custom Development:**
+• 20+ years of experience across multiple industries
+• Proven track record of successful implementations
+• Modern technologies and best practices
+• Cost-effective solutions with excellent ROI
 
 For project consultation and development quotes, please contact our team at info@aniketsolutions.com"""
 
-    # For mobile app queries
-    elif any(word in query_lower for word in ['mobile', 'app', 'ios', 'android', 'smartphone']):
+    elif any(word in query_lower for word in ['mobile', 'app', 'ios', 'android', 'smartphone', 'tablet', 'pwa']):
         return f"""**Mobile Solutions Services**
 
-Transform your mobile strategy with professional app development:
+{SERVICES_KNOWLEDGE_BASE['mobile_solutions']}
 
-**Mobile Development:**
-• **Native Apps**: High-performance iOS and Android applications
-• **Cross-Platform**: React Native, Flutter for cost-effective solutions
-• **Progressive Web Apps**: App-like experiences through browsers
-• **Tablet Applications**: Optimized for field operations
+**Mobile Development Approach:**
+• **Native Development**: Platform-specific apps for optimal performance
+• **Cross-Platform**: Cost-effective solutions using React Native/Flutter
+• **Progressive Web Apps**: Browser-based apps with native-like experience
+• **Enterprise Integration**: Seamless connection with your existing systems
 
-**Key Features:**
-• **Offline Functionality**: Work without internet connection
-• **Real-Time Data Access**: Instant synchronization
-• **Push Notifications**: Keep users engaged
-• **Secure Authentication**: Enterprise-grade security
-• **GPS Integration**: Location-based services
-• **Camera & Scanning**: Document capture and QR codes
-
-**Perfect For:**
-- Field service teams
-- Sales representatives  
-- Fleet management
-- Remote workers
+**Industry Applications:**
+• Maritime: Vessel inspections, maintenance tracking, crew management
+• Field Services: Work order management, asset tracking
+• Logistics: Delivery tracking, inventory management
+• Healthcare: Patient management, appointment scheduling
 
 For mobile app development consultation and estimates, please contact our team at info@aniketsolutions.com"""
 
-    # For general company/services inquiry
-    elif any(word in query_lower for word in ['services', 'company', 'about', 'solutions']):
-        return f"""**Aniket Solutions - Your Technology Partner Since 2004**
+    elif any(word in query_lower for word in ['ai', 'artificial intelligence', 'machine learning', 'chatbot', 'automation', 'ml']):
+        return f"""**AI & Machine Learning Services**
 
-**Maritime Software Suite:**
-🚢 **AniSol TMS** - Technical Management & Maintenance
-🚢 **AniSol Procurement** - AI-Powered Purchasing  
-🚢 **AniSol Inventory** - Fleet-Wide Inventory Control
-🚢 **AniSol Crewing** - Complete Crew Management
-🚢 **AniSol Payroll** - Crew Financial Management
+{SERVICES_KNOWLEDGE_BASE['ai_machine_learning']}
 
-**Technology Services:**
-💻 **Custom Development** - Bespoke software solutions
-📱 **Mobile Applications** - iOS/Android development
-🤖 **AI & Machine Learning** - Intelligent automation
-📊 **Data Services** - Migration, analytics, warehousing
-🔗 **System Integration** - API development and connectivity
+**AI Implementation Process:**
+• **Needs Assessment**: Understanding your automation goals
+• **Data Analysis**: Evaluating your data readiness for AI
+• **Model Development**: Creating custom AI solutions
+• **Integration**: Seamlessly connecting AI with existing systems
+• **Training & Support**: Ensuring your team can leverage AI effectively
 
-**Why Choose Us:**
-• **Maritime Expertise**: Built by professionals who understand shipping
-• **Global Experience**: Serving clients across USA, UK, Singapore, India, Japan
-• **Proven Track Record**: 20+ years of successful implementations
-• **Cost-Effective**: Practical solutions that deliver ROI
+**Real-World AI Applications:**
+• **Maritime**: Predictive maintenance, route optimization, crew scheduling
+• **Manufacturing**: Quality control, predictive maintenance, supply chain optimization
+• **Healthcare**: Medical image analysis, patient risk assessment
+• **Finance**: Fraud detection, risk assessment, automated reporting
 
-For detailed information about any of our solutions, please contact our team at info@aniketsolutions.com"""
+For AI project consultation and development timelines, please contact our team at info@aniketsolutions.com"""
 
-    # If no specific match, provide a helpful general response
+    elif any(word in query_lower for word in ['data', 'database', 'migration', 'analytics', 'reporting', 'etl', 'warehouse']):
+        return f"""**Data Services**
+
+{SERVICES_KNOWLEDGE_BASE['data_services']}
+
+**Data Migration Expertise:**
+• **Legacy Modernization**: Moving from outdated systems to modern platforms
+• **Cloud Migration**: Transitioning to AWS, Azure, or Google Cloud
+• **Database Upgrades**: Oracle to PostgreSQL, SQL Server modernization
+• **Zero Downtime**: Seamless transitions without business interruption
+
+**Data Analytics Solutions:**
+• **Business Intelligence**: Transform raw data into actionable insights
+• **Real-Time Dashboards**: Monitor key metrics and KPIs
+• **Predictive Analytics**: Forecast trends and optimize operations
+• **Compliance Reporting**: GDPR, HIPAA, SOX compliant solutions
+
+For data migration consultation and analytics implementation, please contact our team at info@aniketsolutions.com"""
+
+    elif any(word in query_lower for word in ['integration', 'api', 'connect', 'sync', 'system integration', 'erp', 'crm']):
+        return f"""**System Integration Services**
+
+{SERVICES_KNOWLEDGE_BASE['system_integration']}
+
+**Integration Expertise:**
+• **Enterprise Systems**: ERP, CRM, HRM, financial systems
+• **Cloud & On-Premise**: Hybrid integrations for modern businesses
+• **Legacy Connectivity**: Connecting older systems with modern platforms
+• **Real-Time Data**: Event-driven integrations for instant updates
+
+**Common Integration Scenarios:**
+• **Maritime**: TMS-ERP integration, crew management-payroll sync
+• **Manufacturing**: Production systems with inventory management
+• **Healthcare**: Patient records with billing systems
+• **Retail**: E-commerce platforms with inventory and accounting
+
+For system integration consultation and architecture planning, please contact our team at info@aniketsolutions.com"""
+
+    elif any(word in query_lower for word in ['chatbot', 'virtual assistant', 'customer service', 'conversational ai']):
+        return f"""**AI Chatbot & Virtual Assistant Services**
+
+{SERVICES_KNOWLEDGE_BASE['ai_chatbots']}
+
+**Chatbot Implementation Process:**
+• **Requirements Analysis**: Understanding your customer service needs
+• **Conversation Design**: Creating natural, helpful interactions
+• **AI Training**: Teaching the bot about your business and services
+• **Integration**: Connecting with your existing systems and channels
+• **Optimization**: Continuous improvement based on usage data
+
+**Chatbot Capabilities:**
+• **24/7 Availability**: Never miss a customer inquiry
+• **Multi-Channel**: Website, WhatsApp, Facebook, SMS integration
+• **Intelligent Routing**: Escalate complex issues to human agents
+• **Data Collection**: Gather customer insights and preferences
+
+For chatbot consultation and implementation planning, please contact our team at info@aniketsolutions.com"""
+
+    # General services inquiry
     else:
-        return f"""I'd be happy to help you with information about our technology solutions. 
+        return f"""**Aniket Solutions Technology Services**
 
-Based on your inquiry, our team can provide specific details about:
-• Implementation approaches for your situation
-• Pricing and timeline estimates  
-• Integration with your existing systems
-• Customization options available
+We provide comprehensive technology services to help businesses grow and optimize:
 
-For detailed answers tailored to your specific requirements, please contact our specialists:
+💻 **Custom Development** - Bespoke software solutions for unique business needs
+📱 **Mobile Applications** - iOS/Android development and cross-platform solutions
+🤖 **AI & Machine Learning** - Intelligent automation and predictive analytics
+📊 **Data Services** - Migration, warehousing, analytics, and modernization
+🔗 **System Integration** - API development and enterprise connectivity
+💬 **AI Chatbots** - 24/7 customer service automation
 
-📧 **Email**: info@aniketsolutions.com
-🌐 **Contact Form**: https://www.aniketsolutions.com/contact
+**Our Service Approach:**
+• **Discovery First**: We understand your business before proposing solutions
+• **Agile Methodology**: Iterative development with regular feedback
+• **Quality Assurance**: Comprehensive testing and validation
+• **Ongoing Support**: Long-term partnership beyond project delivery
 
-Our team typically responds within 24 hours with comprehensive information.
+**Industries We Serve:**
+• Maritime & Shipping
+• Manufacturing & Logistics
+• Healthcare & Finance
+• Retail & E-commerce
+• Professional Services
 
-Is there anything else about our general capabilities I can help clarify?"""
+Which service area interests you most? I can provide detailed information about our approach and capabilities.
+
+For service consultation and project planning, please contact our team at info@aniketsolutions.com"""
 
 def generate_otp():
     """Generate a 6-digit OTP"""
@@ -1269,6 +983,122 @@ def comprehensive_email_validation(email):
     
     return results
 
+# Enhanced AI Assistant Configuration for Product/Service Selection
+AI_ASSISTANT_PROMPT = """
+You are Alex, a professional and knowledgeable AI assistant for Aniket Solutions, a leading technology solutions provider established in 2004. You help clients understand our products and services in detail.
+
+## About Aniket Solutions:
+- Established: February 2004 in Singapore
+- Global presence: USA, UK, Cyprus, Greece, India, Japan, Singapore, Hong Kong
+- Expertise: Maritime technology solutions and general technology services
+- Focus: Cost-effective, efficient solutions with understanding of diverse work cultures
+
+## Your Knowledge Base:
+You have access to comprehensive knowledge about:
+
+### Products (Maritime Software):
+- AniSol Inventory Control - Fleet-wide inventory management
+- AniSol Payroll & Master Cash - Crew financial management
+- AniSol Crewing Module - Complete crew management
+- AniSol TMS - Technical Management System
+- AniSol Procurement - AI-powered maritime purchasing
+
+### Services (Technology Services):
+- Custom Application Development - Bespoke software solutions
+- Mobile Solutions - iOS/Android development
+- AI & Machine Learning - Intelligent automation
+- Data Services - Migration, analytics, warehousing
+- System Integration - API development, connectivity
+- AI Chatbots - Customer service automation
+
+## Your Role:
+- Provide detailed, accurate information based strictly on your knowledge base
+- Be helpful and professional without being overly sales-focused
+- Ask clarifying questions to understand specific needs
+- Direct to contact form for complex implementation details or pricing
+- Never hallucinate or make up information not in your knowledge base
+
+## Response Guidelines:
+- Use the exact information from the knowledge base
+- If you don't have specific information, direct them to contact the team
+- Provide detailed feature descriptions when available
+- Ask follow-up questions to understand their specific requirements
+- Suggest appropriate next steps (consultation, demo, contact)
+
+## When You Can't Answer:
+For questions about pricing, specific implementation details, custom requirements, or anything not in your knowledge base, respond with:
+"That's an excellent question that requires detailed input from our specialists. Please contact our team at info@aniketsolutions.com for specific information tailored to your situation."
+
+## Contact Information:
+- Email: info@aniketsolutions.com
+- Website: www.aniketsolutions.com
+
+Remember: Stick strictly to the knowledge base information. Never make up features, capabilities, or details that aren't explicitly provided.
+"""
+
+def generate_ai_response(user_message, selected_category):
+    """Generate AI response based on selected category (products or services)"""
+    try:
+        if not st.session_state.get("openai_client"):
+            return "I'm experiencing technical difficulties. Please contact our team at info@aniketsolutions.com for assistance."
+        
+        # Use knowledge base first based on category
+        if selected_category == "products":
+            # Check if we can answer from product knowledge base
+            response = get_product_response(user_message)
+            if "AniSol" in response:  # If we found a specific product match
+                return response
+        elif selected_category == "services":
+            # Check if we can answer from services knowledge base
+            response = get_service_response(user_message)
+            if any(service in response for service in ["Custom Application", "Mobile Solutions", "AI &", "Data Services", "System Integration"]):
+                return response
+        
+        # If no specific match in knowledge base, use AI with category context
+        category_context = ""
+        if selected_category == "products":
+            category_context = f"""
+The user is interested in our PRODUCTS (Maritime Software). Relevant products include:
+{chr(10).join([f"- {key}: {value[:200]}..." for key, value in PRODUCT_KNOWLEDGE_BASE.items()])}
+"""
+        elif selected_category == "services":
+            category_context = f"""
+The user is interested in our SERVICES (Technology Services). Relevant services include:
+{chr(10).join([f"- {key}: {value[:200]}..." for key, value in SERVICES_KNOWLEDGE_BASE.items()])}
+"""
+        
+        # Prepare messages for AI
+        messages = [
+            {"role": "system", "content": AI_ASSISTANT_PROMPT + category_context},
+            {"role": "user", "content": user_message}
+        ]
+        
+        # Generate response
+        response = st.session_state.openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            temperature=0.3,  # Lower temperature for more focused responses
+            max_tokens=300,
+            presence_penalty=0.1,
+            frequency_penalty=0.1
+        )
+        
+        ai_response = response.choices[0].message.content.strip()
+        
+        # Ensure response doesn't hallucinate
+        if any(phrase in ai_response.lower() for phrase in [
+            "i don't have specific information",
+            "i'm not sure about",
+            "i don't know",
+            "that's not in my knowledge"
+        ]):
+            return "That's an excellent question that requires detailed input from our specialists. Please contact our team at info@aniketsolutions.com for specific information tailored to your situation."
+        
+        return ai_response
+        
+    except Exception as e:
+        return "I'm experiencing technical difficulties. Please contact our team at info@aniketsolutions.com for assistance."
+
 # Configure the page
 st.set_page_config(
     page_title="Aniket Solutions AI Assistant",
@@ -1325,11 +1155,30 @@ st.markdown("""
         width: 45px;
         height: 45px;
     }
+    
+    /* Button styling */
+    .stButton > button {
+        width: 100%;
+        border-radius: 10px;
+        border: 2px solid #667eea;
+        background-color: white;
+        color: #667eea;
+        font-weight: bold;
+        padding: 0.75rem 1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        background-color: #667eea;
+        color: white;
+        border-color: #667eea;
+        box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def add_initial_greeting():
-    """Add concise AI-powered greeting message when chat starts"""
+    """Add initial AI-powered greeting message when chat starts"""
     greeting_message = """Hello! I'm Alex from Aniket Solutions. 
 
 I help businesses find the right technology solutions. We specialize in maritime software and custom development services.
@@ -1354,19 +1203,8 @@ def add_message_to_chat(role, content, timestamp=None):
         "timestamp": timestamp
     })
 
-def show_selection_buttons(question, options, key_prefix):
-    """Display selection buttons and handle responses"""
-    st.markdown(f"**Assistant:** {question}")
-    
-    cols = st.columns(len(options))
-    for i, option in enumerate(options):
-        with cols[i]:
-            if st.button(option, key=f"{key_prefix}_{option.lower()}", use_container_width=True):
-                return option
-    return None
-
 def handle_email_validation_flow(email, validation_result):
-    """Handle the flow after email validation with concise AI-powered responses"""
+    """Handle the flow after email validation"""
     # Add validation result to chat
     if validation_result['is_valid']:
         validation_response = "✅ Email validated successfully."
@@ -1389,7 +1227,7 @@ def handle_email_validation_flow(email, validation_result):
             st.session_state.conversation_flow["awaiting_email"] = False
             st.session_state.conversation_flow["awaiting_otp"] = True
             
-            # Concise verification message
+            # Verification message
             add_message_to_chat("assistant", 
                 f"I've sent a 6-digit code to {email}. Please enter it below to continue. Code expires in 10 minutes."
             )
@@ -1470,57 +1308,6 @@ with st.sidebar:
         st.session_state.api_key = OPENAI_API_KEY
         if "openai_client" not in st.session_state:
             st.session_state.openai_client = client
-    
-    # Model selection
-    model_options = [
-        "gpt-3.5-turbo",
-        "gpt-4",
-        "gpt-4-turbo-preview"
-    ]
-    
-    selected_model = st.selectbox(
-        "Select Model",
-        model_options,
-        index=0,
-        help="Choose the AI model for responses"
-    )
-    
-    # Temperature setting
-    temperature = st.slider(
-        "Response Creativity",
-        min_value=0.0,
-        max_value=2.0,
-        value=0.7,
-        step=0.1,
-        help="Higher values make responses more creative but less focused"
-    )
-    
-    # Max tokens
-    max_tokens = st.slider(
-        "Max Response Length",
-        min_value=50,
-        max_value=2000,
-        value=500,
-        step=50,
-        help="Maximum number of tokens in the response"
-    )
-    
-    # System prompt
-    system_prompt = st.text_area(
-        "System Instructions",
-        value="You are a helpful and friendly chat assistant representing Aniket Solutions. Provide clear, accurate, and helpful responses to user questions about our company, services, and products.",
-        height=100,
-        help="Instructions that define the assistant's behavior"
-    )
-    
-    # Contact Form Integration
-    st.subheader("📋 Contact Information")
-    st.success("✅ Contact form integration ready")
-    st.info(f"📧 Email: {CONTACT_EMAIL}")
-    st.info(f"🌐 Contact Form: {CONTACT_FORM_URL}")
-    
-    if st.button("🔗 Open Contact Form", use_container_width=True):
-        st.markdown(f"[Open Contact Form]({CONTACT_FORM_URL})")
     
     # Session Management
     st.subheader("🔄 Session Management")
@@ -1603,25 +1390,9 @@ with st.sidebar:
     
     st.divider()
     
-    # AWS SES status (only show if not configured)
+    # AWS SES status
     if not (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY):
         st.warning("⚠️ AWS SES not configured. Please add AWS credentials to .env file.")
-        with st.expander("AWS SES Configuration Help"):
-            st.markdown("""
-            **Required .env variables:**
-            ```
-            AWS_ACCESS_KEY_ID=your-access-key
-            AWS_SECRET_ACCESS_KEY=your-secret-key
-            AWS_REGION=us-east-1
-            SES_FROM_EMAIL=your-verified@email.com  # Optional - will auto-detect
-            ```
-            
-            **Steps to configure:**
-            1. Create AWS account and access to SES
-            2. Verify your sender email address in SES
-            3. Create IAM user with SES permissions
-            4. Add credentials to .env file
-            """)
     else:
         st.success("✅ AWS SES configured")
         if not SES_FROM_EMAIL:
@@ -1639,64 +1410,6 @@ with st.sidebar:
     else:
         st.warning("⚠️ Content moderation requires OpenAI API")
         st.caption("Basic gibberish detection only")
-    
-    st.divider()
-    
-    # Email validation section
-    st.subheader("📧 Email Validator")
-    
-    email_to_validate = st.text_input(
-        "Email Address",
-        placeholder="Enter email to validate...",
-        help="Check if email is valid, domain exists, and is corporate"
-    )
-    
-    if st.button("🔍 Validate Email", use_container_width=True):
-        if email_to_validate.strip():
-            with st.spinner("Validating email..."):
-                # Handle email validation in sidebar
-                validation_result = comprehensive_email_validation(email_to_validate.strip())
-                
-                # Display results
-                if validation_result['is_valid']:
-                    st.success("✅ Valid Corporate Email!")
-                    
-                    # Trigger conversation flow
-                    handle_email_validation_flow(email_to_validate.strip(), validation_result)
-                    st.rerun()
-                else:
-                    st.error("❌ Email Validation Failed")
-                
-                # Show detailed results
-                with st.expander("Validation Details", expanded=True):
-                    for message in validation_result['messages']:
-                        st.write(message)
-                    
-                    # Summary metrics
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Format", "✅" if validation_result['format_valid'] else "❌")
-                    with col2:
-                        st.metric("Domain", "✅" if validation_result['domain_valid'] else "❌")
-                    with col3:
-                        st.metric("Corporate", "✅" if validation_result['is_corporate'] else "❌")
-        else:
-            st.warning("Please enter an email address to validate")
-    
-    st.divider()
-    
-    # Export chat button
-    if st.session_state.messages and st.button("💾 Export Chat", use_container_width=True):
-        chat_data = {
-            "timestamp": datetime.now().isoformat(),
-            "messages": st.session_state.messages
-        }
-        st.download_button(
-            label="Download Chat History",
-            data=json.dumps(chat_data, indent=2),
-            file_name=f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json"
-        )
 
 # Main chat interface
 st.markdown('<div class="main-header"><h1>🤖 Alex - Aniket Solutions AI Assistant</h1><p>Your intelligent technology consultant</p></div>', unsafe_allow_html=True)
@@ -1796,12 +1509,12 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                     is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
                     
                     if is_valid:
-                        # Success - concise success message
-                        add_message_to_chat("assistant", "✅ Email verified! What business challenges can I help you solve?")
+                        # Success - move to product/service selection
+                        add_message_to_chat("assistant", "✅ Email verified! What would you like to know more about?")
                         
                         st.session_state.conversation_flow["awaiting_otp"] = False
                         st.session_state.conversation_flow["otp_verified"] = True
-                        st.session_state.conversation_flow["awaiting_selection"] = False  # Skip rigid selection, go straight to AI conversation
+                        st.session_state.conversation_flow["awaiting_selection"] = True
                         
                         st.rerun()
                     else:
@@ -1845,35 +1558,74 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                         st.error(f"Failed to resend: {message}")
                     st.rerun()
 
-# Chat input functions
-def get_ai_response(messages, model, temperature, max_tokens, system_prompt):
-    """Get response from OpenAI API using the new v1.0+ interface"""
-    try:
-        openai_client = st.session_state.get("openai_client")
-        if not openai_client:
-            return "Error: OpenAI client not initialized. Please check your API key."
-        
-        # Prepare messages with system prompt
-        api_messages = [{"role": "system", "content": system_prompt}]
-        api_messages.extend([{"role": msg["role"], "content": msg["content"]} 
-                           for msg in messages])
-        
-        # Use the new OpenAI v1.0+ interface
-        response = openai_client.chat.completions.create(
-            model=model,
-            messages=api_messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True
-        )
-        
-        return response
-    except Exception as e:
-        return f"Error: {str(e)}"
+# Product/Service Selection Flow
+elif st.session_state.conversation_flow["awaiting_selection"]:
+    st.markdown("---")
+    st.markdown("**What would you like to know more about?**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚢 Maritime Products", key="select_products", use_container_width=True):
+            add_message_to_chat("user", "I'm interested in your maritime products")
+            
+            # Set category and provide overview
+            st.session_state.conversation_flow["selected_category"] = "products"
+            st.session_state.conversation_flow["awaiting_selection"] = False
+            
+            products_overview = """Great choice! Our **AniSol Maritime Software Suite** includes:
 
-# Input form (only show if not in flow)
+🚢 **AniSol TMS** - Technical Management & Maintenance System
+🚢 **AniSol Procurement** - AI-Powered Maritime Purchasing 
+🚢 **AniSol Inventory Control** - Fleet-Wide Inventory Management
+🚢 **AniSol Crewing Module** - Complete Crew Management
+🚢 **AniSol Payroll & Master Cash** - Crew Financial Management
+
+All our maritime products are:
+• **Ship & Cloud Ready** - Work offline, sync when connected
+• **Maritime-Specific** - Built by seafarers for real operations  
+• **Integrated Suite** - All modules work seamlessly together
+• **Compliance Ready** - Flag state, STCW, MLC compliance built-in
+
+Which specific product interests you most, or do you have questions about any particular area?"""
+            
+            add_message_to_chat("assistant", products_overview)
+            st.rerun()
+    
+    with col2:
+        if st.button("💻 Technology Services", key="select_services", use_container_width=True):
+            add_message_to_chat("user", "I'm interested in your technology services")
+            
+            # Set category and provide overview
+            st.session_state.conversation_flow["selected_category"] = "services"
+            st.session_state.conversation_flow["awaiting_selection"] = False
+            
+            services_overview = """Excellent! Our **Technology Services** help businesses innovate and grow:
+
+💻 **Custom Development** - Bespoke software solutions for unique business needs
+📱 **Mobile Applications** - iOS/Android development and cross-platform solutions
+🤖 **AI & Machine Learning** - Intelligent automation and predictive analytics
+📊 **Data Services** - Migration, warehousing, analytics, and modernization
+🔗 **System Integration** - API development and enterprise connectivity
+💬 **AI Chatbots** - 24/7 customer service automation
+
+**Our Approach:**
+• **Discovery First** - We understand your business before proposing solutions
+• **Agile Methodology** - Iterative development with regular feedback
+• **Quality Assurance** - Comprehensive testing and validation
+• **Ongoing Support** - Long-term partnership beyond project delivery
+
+**Industries We Serve:** Maritime, Manufacturing, Healthcare, Finance, Retail, Professional Services
+
+What type of technology challenge are you looking to solve, or which service area interests you most?"""
+            
+            add_message_to_chat("assistant", services_overview)
+            st.rerun()
+
+# Chat input (only show after category selection or during conversation)
 if (not st.session_state.conversation_flow["awaiting_email"] and 
-    not st.session_state.conversation_flow["awaiting_otp"]):
+    not st.session_state.conversation_flow["awaiting_otp"] and
+    not st.session_state.conversation_flow["awaiting_selection"]):
     
     with st.form("chat_form", clear_on_submit=True):
         col1, col2 = st.columns([6, 1])
@@ -1888,13 +1640,10 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
         with col2:
             send_button = st.form_submit_button("Send", use_container_width=True)
 
-    # Handle user input (only if not in conversation flow)
-    if (send_button and user_input.strip() and 
-        not st.session_state.conversation_flow["awaiting_email"] and
-        not st.session_state.conversation_flow["awaiting_otp"]):
-        
+    # Handle user input
+    if send_button and user_input.strip():
         if not st.session_state.api_key:
-            st.error("Please configure your OpenAI API key in the .env file to start chatting.")
+            st.error("Please configure your OpenAI API key to start chatting.")
         else:
             # Content moderation and gibberish detection
             content_is_safe, filter_message = comprehensive_content_filter(user_input)
@@ -1912,85 +1661,25 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
                 # Add user message (after passing content filter)
                 add_message_to_chat("user", user_input)
                 
-                # Add special handling for email validation requests in chat
-                if any(keyword in user_input.lower() for keyword in ['validate email', 'check email', 'verify email']):
-                    # Extract email from user input
-                    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-                    emails_found = re.findall(email_pattern, user_input)
-                    
-                    if emails_found:
-                        email_to_check = emails_found[0]
-                        validation_result = comprehensive_email_validation(email_to_check)
-                        
-                        # Handle email validation and trigger flow
-                        if handle_email_validation_flow(email_to_check, validation_result):
-                            st.rerun()
-                        else:
-                            st.rerun()
-                    else:
-                        add_message_to_chat("assistant", "Please provide an email address to validate.")
-                        st.rerun()
+                # Get response based on selected category
+                selected_category = st.session_state.conversation_flow.get("selected_category")
                 
-                # Check if user provided email in regular chat (during email waiting phase)
-                elif st.session_state.conversation_flow["awaiting_email"]:
-                    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-                    emails_found = re.findall(email_pattern, user_input)
-                    
-                    if emails_found:
-                        email_to_check = emails_found[0]
-                        validation_result = comprehensive_email_validation(email_to_check)
-                        
-                        if handle_email_validation_flow(email_to_check, validation_result):
-                            st.rerun()
-                        else:
-                            st.rerun()
-                    else:
-                        add_message_to_chat("assistant", "I need a valid email address to continue. Could you please provide your corporate email?")
-                        st.rerun()
-                
-                # Get AI response for general queries (only after email validation and OTP verification)
-                elif (not any(keyword in user_input.lower() for keyword in ['validate email', 'check email', 'verify email']) and 
-                      st.session_state.conversation_flow["email_validated"] and 
-                      st.session_state.conversation_flow["otp_verified"]):
-                    
-                    # Use AI-powered response system
+                if selected_category:
                     with st.spinner("Thinking..."):
                         try:
-                            # Always check knowledge base first - much more permissive matching
-                            if (any(word in user_input.lower() for word in [
-                                # Maritime terms
-                                'crew', 'ship', 'vessel', 'maritime', 'marine', 'seafarer',
-                                'inventory', 'spare', 'maintenance', 'procurement', 'tms',
-                                'payroll', 'crewing', 'technical', 'purchasing', 'supplier',
-                                # Technology terms  
-                                'software', 'app', 'mobile', 'ai', 'development', 'custom',
-                                'system', 'integration', 'data', 'analytics', 'automation',
-                                'chatbot', 'solution', 'technology', 'service',
-                                # Business terms
-                                'management', 'control', 'tracking', 'compliance', 'workflow'
-                            ]) or search_company_info(user_input)):
-                                ai_response = get_smart_company_response(user_input)
-                            else:
-                                # Use pure AI for general business conversation
-                                ai_response = generate_ai_response(user_input, st.session_state.messages)
-                            
+                            ai_response = generate_ai_response(user_input, selected_category)
                             add_message_to_chat("assistant", ai_response)
                             st.rerun()
                             
                         except Exception as e:
-                            # Fallback to contact form if there's an error
-                            fallback_response = generate_contact_form_response(
-                                "I'm experiencing some technical difficulties at the moment."
-                            )
+                            # Fallback response
+                            fallback_response = "I'm experiencing some technical difficulties. Please contact our team at info@aniketsolutions.com for assistance."
                             add_message_to_chat("assistant", fallback_response)
                             st.rerun()
-                
-                # If user tries to chat before email validation and OTP verification
-                elif not (st.session_state.conversation_flow["email_validated"] and st.session_state.conversation_flow["otp_verified"]):
-                    if not st.session_state.conversation_flow["email_validated"]:
-                        add_message_to_chat("assistant", "I'd be happy to help! But first, I need your corporate email address to continue. Could you please provide it?")
-                    elif not st.session_state.conversation_flow["otp_verified"]:
-                        add_message_to_chat("assistant", "Please verify your email with the OTP code sent to your email address before we can continue.")
+                else:
+                    # If no category selected, prompt for selection
+                    add_message_to_chat("assistant", "Please select whether you're interested in our Maritime Products or Technology Services first.")
+                    st.session_state.conversation_flow["awaiting_selection"] = True
                     st.rerun()
 
 # Show welcome message only if no API key
