@@ -435,40 +435,9 @@ For vessel-specific TMS configuration, contact info@aniketsolutions.com"""
 
 For procurement system setup and vendor integration, contact info@aniketsolutions.com"""
 
-    # General product inquiry
+    # No specific match found
     else:
-        return f"""AniSol Maritime Software Suite provides integrated fleet management capabilities designed for complex maritime operations and regulatory compliance.
-
-**Product Portfolio:**
-
-**AniSol TMS** - Technical Management System
-Comprehensive maintenance management with PSC/Class compliance, certificate tracking, and inventory integration.
-
-**AniSol Procurement** - AI-Powered Purchasing System  
-Advanced procurement workflows with vendor management, approval controls, and AI-driven analytics.
-
-**AniSol Inventory Control** - Fleet-Wide Inventory Management
-Real-time inventory tracking across vessels with automated reordering and consumption analysis.
-
-**AniSol Crewing Module** - Complete Crew Management
-Full crew lifecycle management including payroll, compliance, and performance tracking.
-
-**AniSol Payroll & Master Cash** - Crew Financial Management
-Maritime-specific payroll processing with multi-currency support and cash management.
-
-**Integration Architecture:**
-• Seamless inter-module data flow and process automation
-• Ship and cloud deployment options with offline capability
-• Ultra-low bandwidth optimization for satellite communications
-• Comprehensive audit trails and compliance reporting
-
-**Compliance Coverage:**
-• Flag state regulations and reporting requirements
-• STCW certification and competency management  
-• MLC (Maritime Labour Convention) compliance
-• Class society survey and inspection tracking
-
-For comprehensive product demonstrations and implementation planning, contact info@aniketsolutions.com"""
+        return "We don't currently offer specific solutions for that area. For specialized requirements, contact our team at info@aniketsolutions.com to discuss custom development options."
 
 def get_service_response(query):
     """Get detailed response based on services knowledge base"""
@@ -688,45 +657,9 @@ For system integration architecture planning, contact info@aniketsolutions.com""
 
 For chatbot implementation and customization, contact info@aniketsolutions.com"""
 
-    # General services inquiry
+    # No specific match found
     else:
-        return f"""Technology Services portfolio addresses comprehensive business modernization requirements through specialized expertise in software development, systems integration, and emerging technologies.
-
-**Service Categories:**
-
-**Custom Development**
-Enterprise software solutions, web applications, and legacy system modernization using modern frameworks and architectures.
-
-**Mobile Applications**  
-Native iOS/Android development and cross-platform solutions with offline capabilities and real-time synchronization.
-
-**AI & Machine Learning**
-Intelligent automation, predictive analytics, natural language processing, and computer vision implementations.
-
-**Data Services**
-Database migration, data warehousing, analytics platforms, and business intelligence dashboard development.
-
-**System Integration**
-API development, enterprise application connectivity, and hybrid cloud-premise integration architectures.
-
-**AI Chatbots & Virtual Assistants**
-Conversational AI for customer service automation with multi-channel deployment and intelligent escalation.
-
-**Industry Expertise:**
-• Maritime and shipping operations optimization
-• Manufacturing and logistics automation  
-• Healthcare and regulatory compliance systems
-• Financial services and risk management platforms
-• Retail and e-commerce technology solutions
-
-**Service Delivery:**
-• Discovery and requirements analysis
-• Technical architecture design
-• Agile development with iterative feedback
-• Quality assurance and security validation
-• Deployment and ongoing technical support
-
-For service consultation and project planning, contact info@aniketsolutions.com"""
+        return "We don't currently offer specific solutions for that area. For specialized requirements, contact our team at info@aniketsolutions.com to discuss custom development options."
 
 def generate_otp():
     """Generate a 6-digit OTP"""
@@ -1247,16 +1180,20 @@ def generate_ai_response(user_message, selected_category):
         if not st.session_state.get("openai_client"):
             return "For technical assistance, contact our specialists at info@aniketsolutions.com"
         
-        # Use knowledge base first based on category
+        # If no specific match in knowledge base, be honest about it
         if selected_category == "products":
-            # Check if we can answer from product knowledge base
             response = get_product_response(user_message)
             if "AniSol" in response:  # If we found a specific product match
                 return response
+            else:
+                # No relevant product found, return the honest response
+                return response
         elif selected_category == "services":
-            # Check if we can answer from services knowledge base
             response = get_service_response(user_message)
             if any(service in response for service in ["Custom Application", "Mobile Solutions", "AI and Machine Learning", "Data Services", "System Integration"]):
+                return response
+            else:
+                # No relevant service found, return the honest response
                 return response
         
         # If no specific match in knowledge base, use AI with category context
