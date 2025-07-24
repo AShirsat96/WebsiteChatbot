@@ -1257,15 +1257,21 @@ Provide specific technical implementation details and business applications.
 
 # Configure the page
 st.set_page_config(
-    page_title="Aniket Solutions AI Assistant",
+    page_title="Aniket Solutions",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better styling
+# Custom CSS for better styling and hide sidebar completely
 st.markdown("""
 <style>
+    /* Hide sidebar completely */
+    .css-1d391kg {display: none !important;}
+    .css-1rs6os {display: none !important;}
+    .css-17eq0hr {display: none !important;}
+    section[data-testid="stSidebar"] {display: none !important;}
+    
     .stApp {
         max-width: 800px;
         margin: 0 auto;
@@ -1291,21 +1297,6 @@ st.markdown("""
     
     .chat-message img {
         object-fit: cover;
-    }
-    
-    .sidebar .element-container {
-        margin-bottom: 1rem;
-    }
-    
-    .main-header {
-        text-align: center;
-        padding: 1rem 0;
-        border-bottom: 2px solid #f0f0f0;
-        margin-bottom: 2rem;
-    }
-    
-    /* Ensure images load properly */
-    .chat-message img {
         max-width: 45px;
         max-height: 45px;
         width: 45px;
@@ -1855,15 +1846,11 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
                     st.session_state.conversation_flow["awaiting_selection"] = True
                     st.rerun()
 
-# Show welcome message only if no API key
-if not st.session_state.api_key and not st.session_state.messages:
-    st.info("Please configure your OpenAI API key in the .env file to start the chat assistant.")
-
 # Footer
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; font-size: 0.8rem;'>"
-    "Built with Streamlit • Powered by OpenAI GPT-4 • Alex - Aniket Solutions AI Assistant"
+    "Powered by Aniket Solutions"
     "</div>",
     unsafe_allow_html=True
 )
