@@ -1568,7 +1568,6 @@ with st.sidebar:
         st.caption("Basic gibberish detection only")
 
 # Main chat interface
-st.markdown('<div class="main-header"><h1>🤖 Alex - Aniket Solutions AI Assistant</h1><p>Your intelligent technology consultant</p></div>', unsafe_allow_html=True)
 
 # Display chat messages
 chat_container = st.container()
