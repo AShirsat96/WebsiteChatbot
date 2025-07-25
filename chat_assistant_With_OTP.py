@@ -1326,11 +1326,7 @@ st.markdown("""
 
 def add_initial_greeting():
     """Add initial AI-powered greeting message when chat starts"""
-    greeting_message = """Hello! I'm Alex from Aniket Solutions. 
-
-I help businesses find the right technology solutions. We specialize in maritime software and custom development services.
-
-To provide relevant information, could you please share your corporate email address?"""
+    greeting_message = """Hello! I'm Alex from Aniket Solutions, specializing in maritime software and technology services. To assist you, please provide your corporate email."""
     
     timestamp = datetime.now().strftime("%H:%M")
     st.session_state.messages.append({
