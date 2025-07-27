@@ -328,8 +328,8 @@ TMS_KEYWORDS = [
     'boiler', 'heat exchanger', 'separator', 'purifier', 'winch', 'crane', 'hatch cover',
     'steering gear', 'propeller', 'shaft', 'bearing', 'valve', 'pipe', 'tank',
     
-    # Inspections & surveys
-    'inspection', 'survey', 'class survey', 'dry dock', 'intermediate survey',
+    # Inspections & surveys (REMOVED "dry dock" from here)
+    'inspection', 'survey', 'class survey', 'intermediate survey',
     'annual survey', 'special survey', 'psc', 'port state control', 'flag state inspection',
     'vetting inspection', 'internal audit', 'safety inspection',
     
@@ -634,64 +634,74 @@ def get_product_response_enhanced(query):
     if confidence > 0.25 and category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
         
         if category == 'inventory':
-            return """**AniSol Inventory Control** - Fleet inventory management system with real-time tracking across vessels and shore facilities.
+            return """**AniSol Inventory Control** - Fleet inventory management SOFTWARE for tracking spares and consumables across vessels.
 
 **Key Features:**
-• Spares & consumables inventory tracking
-• Real-time ROB (Remaining Onboard) monitoring
-• Automated reordering and shortage alerts
+• Software for tracking spares & consumables inventory
+• Real-time ROB (Remaining Onboard) monitoring system
+• Automated reordering and shortage alert software
 • Integration with maintenance and procurement systems
-• Fleet-wide visibility and audit compliance
+• Fleet-wide visibility and audit compliance tools
 
-Contact info@aniketsolutions.com for implementation details."""
+*We provide inventory management SOFTWARE - not physical supplies or chandlery services.*
+
+Contact info@aniketsolutions.com for software implementation."""
 
         elif category == 'payroll':
-            return """**AniSol Payroll & Master Cash** - Maritime crew financial management with compliance features.
+            return """**AniSol Payroll & Master Cash** - Maritime crew financial management SOFTWARE with compliance features.
 
 **Key Features:**
-• Automated payroll with overtime and allowances
-• Multi-currency support and exchange rates
-• Master's cash and petty cash management
-• Portage bill generation and audit trails
+• Automated payroll software with overtime and allowances
+• Multi-currency support and exchange rate systems
+• Digital master's cash and petty cash management
+• Portage bill generation and audit trail software
 • Integration with accounting systems
 
-Contact info@aniketsolutions.com for setup consultation."""
+*We provide payroll management SOFTWARE - not financial services or banking.*
+
+Contact info@aniketsolutions.com for software setup consultation."""
 
         elif category == 'crewing':
-            return """**AniSol Crewing Module** - Complete crew lifecycle management for maritime operations.
+            return """**AniSol Crewing Module** - Complete crew lifecycle management SOFTWARE for maritime operations.
 
 **Key Features:**
-• Crew scheduling and deployment planning
-• Document and certification management
-• STCW and MLC compliance tracking
-• Performance appraisals and training records
+• Crew scheduling and deployment planning software
+• Digital document and certification management
+• STCW and MLC compliance tracking systems
+• Performance appraisals and training record software
 • Payroll and cash management integration
 
-Contact info@aniketsolutions.com for crew management consultation."""
+*We provide crew management SOFTWARE - not recruitment or manning services.*
+
+Contact info@aniketsolutions.com for software consultation."""
 
         elif category == 'tms':
-            return """**AniSol TMS** - Technical Management System for maritime maintenance and compliance.
+            return """**AniSol TMS** - Technical Management SOFTWARE for maritime maintenance and compliance tracking.
 
 **Key Features:**
-• Planned and unplanned maintenance scheduling
-• PSC inspection and class survey tracking
-• Work order management and history
-• Certificate lifecycle management
-• Integration with inventory for spare parts
+• Planned and unplanned maintenance scheduling software
+• PSC inspection and class survey tracking systems
+• Digital work order management and history
+• Certificate lifecycle management software
+• Integration with inventory for spare parts tracking
 
-Contact info@aniketsolutions.com for technical implementation."""
+*We provide maintenance management SOFTWARE - not physical repair or drydocking services.*
+
+Contact info@aniketsolutions.com for software implementation."""
 
         elif category == 'procurement':
-            return """**AniSol Procurement** - AI-powered maritime purchasing platform with vendor management.
+            return """**AniSol Procurement** - AI-powered maritime purchasing management SOFTWARE with vendor tracking.
 
 **Key Features:**
-• Multi-type requisition management
-• Vendor database and performance tracking
-• Automated approval workflows
-• ShipServ integration and quote comparison
-• Budget control and audit logging
+• Multi-type requisition management software
+• Vendor database and performance tracking systems
+• Automated approval workflow software
+• ShipServ integration and quote comparison tools
+• Budget control and audit logging systems
 
-Contact info@aniketsolutions.com for procurement setup."""
+*We provide procurement management SOFTWARE - not physical supplies or chandlery services.*
+
+Contact info@aniketsolutions.com for software setup."""
 
     # Fallback for products
     return """**AniSol Maritime Software Suite** - Integrated fleet management solutions:
@@ -875,7 +885,7 @@ IMPORTANT INSTRUCTIONS:
                 return ai_response
         
         # Final fallback
-        return "For specific information about our maritime products or technology services, please provide more details about your requirements, or contact our specialists at info@aniketsolutions.com for detailed consultation."
+        return "For information about our maritime software products and technology services, contact our specialists at info@aniketsolutions.com for detailed consultation."
         
     except Exception as e:
         return "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
