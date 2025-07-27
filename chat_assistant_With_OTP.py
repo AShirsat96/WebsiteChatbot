@@ -569,7 +569,7 @@ def get_best_match_category(query):
     Enhanced keyword matching that finds the best category match for a query
     Returns tuple: (category, confidence_score, matched_keywords)
     """
-    query_lower = query.lower()
+    query_lower = query.lower().strip()
     query_words = set(query_lower.split())
     
     matches = {}
@@ -583,9 +583,9 @@ def get_best_match_category(query):
                 matched_keywords.append(keyword)
                 # Give higher score for exact phrase matches
                 if ' ' in keyword:
-                    score += 3  # Multi-word phrases get higher weight
+                    score += 5  # Increased from 3 to 5 for multi-word phrases
                 else:
-                    score += 1  # Single words get base score
+                    score += 2  # Increased from 1 to 2 for single words
         
         # Additional scoring for word matches
         keyword_words = set()
@@ -595,11 +595,20 @@ def get_best_match_category(query):
         common_words = query_words.intersection(keyword_words)
         score += len(common_words) * 0.5  # Partial score for individual word matches
         
+        # BONUS: If query is very short (1-2 words) and matches a primary keyword exactly, boost score
+        if len(query_words) <= 2:
+            primary_keywords = keywords[:10]  # First 10 keywords are usually primary terms
+            for keyword in primary_keywords:
+                if keyword == query_lower:  # Exact match
+                    score += 5  # Big bonus for exact primary keyword match
+                elif keyword in query_lower and len(keyword) > 3:  # Close match for longer keywords
+                    score += 3
+        
         if score > 0:
             matches[category] = {
                 'score': score,
                 'matched_keywords': matched_keywords,
-                'confidence': min(score / 10, 1.0)  # Normalize to 0-1
+                'confidence': min(score / 8, 1.0)  # Adjusted denominator from 10 to 8 for higher confidence
             }
     
     if not matches:
@@ -1006,7 +1015,7 @@ def generate_smart_response_enhanced(user_message):
         
         # IMPROVED LOGIC: Always respond based on what the user is asking about, 
         # regardless of their initial selection (products vs services)
-        if confidence > 0.3:  # Lowered threshold for better responsiveness
+        if confidence > 0.25:  # Lowered threshold further for better responsiveness
             # Check if it's a product category - respond with product info
             if category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
                 return get_product_response_enhanced(user_message)
