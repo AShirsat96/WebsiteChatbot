@@ -1004,10 +1004,13 @@ def generate_smart_response_enhanced(user_message):
         # First, get the best category match with confidence score
         category, confidence, matched_keywords = get_best_match_category(user_message)
         
-        # If we have a strong match (confidence > 0.4), use the enhanced responses
-        if confidence > 0.4:
+        # IMPROVED LOGIC: Always respond based on what the user is asking about, 
+        # regardless of their initial selection (products vs services)
+        if confidence > 0.3:  # Lowered threshold for better responsiveness
+            # Check if it's a product category - respond with product info
             if category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
                 return get_product_response_enhanced(user_message)
+            # Check if it's a service category - respond with service info
             elif category in ['custom_development', 'mobile', 'ai_ml', 'data_services', 'integration', 'chatbot']:
                 return get_service_response_enhanced(user_message)
         
@@ -1017,27 +1020,27 @@ def generate_smart_response_enhanced(user_message):
 You are Alex, a senior technology consultant at Aniket Solutions. Provide professional responses about our maritime software products and technology services.
 
 AVAILABLE MARITIME PRODUCTS:
-- AniSol Inventory Control: Fleet inventory management
-- AniSol Payroll & Master Cash: Crew financial management  
-- AniSol Crewing Module: Complete crew management
-- AniSol TMS: Technical Management System
-- AniSol Procurement: AI-powered purchasing
+- AniSol Inventory Control: Fleet inventory management with spare parts and consumables tracking
+- AniSol Payroll & Master Cash: Crew financial management with multi-currency support
+- AniSol Crewing Module: Complete crew lifecycle management with compliance tracking
+- AniSol TMS: Technical Management System for maintenance and inspections
+- AniSol Procurement: AI-powered purchasing platform with vendor management
 
 AVAILABLE TECHNOLOGY SERVICES:
-- Custom Application Development
-- Mobile Solutions (iOS/Android)
-- AI & Machine Learning
-- Data Services & Migration
-- System Integration
-- AI Chatbots & Virtual Assistants
+- Custom Application Development: Enterprise software solutions and legacy modernization
+- Mobile Solutions: Native iOS/Android apps and cross-platform development
+- AI & Machine Learning: Intelligent automation and predictive analytics
+- Data Services & Migration: Database migration and business intelligence
+- System Integration: API development and enterprise connectivity
+- AI Chatbots & Virtual Assistants: Conversational AI for customer service
 
-INSTRUCTIONS:
-- Respond professionally without conversational AI language
-- Use specific technical details and capabilities
-- Focus on business value and implementation benefits
-- If asked about products, provide detailed product information
-- If asked about services, provide detailed service information
+IMPORTANT INSTRUCTIONS:
+- Always respond based on what the user is asking about, regardless of any previous category selection
+- If they ask about products (inventory, payroll, crewing, TMS, procurement), provide detailed product information
+- If they ask about services (development, mobile, AI, data, integration, chatbot), provide detailed service information
+- Use specific technical details and business benefits
 - Always include contact info@aniketsolutions.com for detailed consultation
+- Respond professionally without conversational AI language
 """
             
             messages = [
@@ -1049,7 +1052,7 @@ INSTRUCTIONS:
                 model="gpt-4",
                 messages=messages,
                 temperature=0.2,
-                max_tokens=500,
+                max_tokens=600,  # Increased for more detailed responses
                 presence_penalty=0.0,
                 frequency_penalty=0.0
             )
