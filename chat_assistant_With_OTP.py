@@ -630,239 +630,79 @@ def get_product_response_enhanced(query):
     # Get the best matching category
     category, confidence, matched_keywords = get_best_match_category(query)
     
-    # If we have a good match (confidence > 0.3) and it's a product category
-    if confidence > 0.3 and category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
+    # If we have a good match (confidence > 0.25) and it's a product category
+    if confidence > 0.25 and category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
         
         if category == 'inventory':
-            return f"""**AniSol Inventory Control** - Fleet-Wide Inventory Management System
+            return """**AniSol Inventory Control** - Fleet inventory management system with real-time tracking across vessels and shore facilities.
 
-AniSol Inventory Control provides comprehensive fleet-wide inventory operations across vessels and shore facilities with real-time tracking and automated management capabilities.
+**Key Features:**
+• Spares & consumables inventory tracking
+• Real-time ROB (Remaining Onboard) monitoring
+• Automated reordering and shortage alerts
+• Integration with maintenance and procurement systems
+• Fleet-wide visibility and audit compliance
 
-**Two Primary Inventory Categories:**
-• **Spares Inventory** - Directly linked to machinery maintenance and repair operations
-• **Consumable Stores** - Food, safety equipment, stationery, chemicals, and operational supplies
-
-**Core Management Features:**
-• Master Store List Management with centralized control and consistency
-• Real-time ROB (Remaining Onboard) tracking with location-based adjustments
-• Automated store receipts processing for office-supplied items with manual cash/local procurement support
-• Consumption logging with permission-based controls and approval workflows
-• Color-coded stock level alerts and management dashboards for immediate visibility
-• Component mapping system linking spare parts to specific machinery and systems
-
-**Advanced Capabilities:**
-• Transaction history and comprehensive audit logging with export functionality
-• Fleet-wide visibility enabling identification of slow/fast-moving inventory items
-• Automated shortage identification and requisition processing
-• Integration with AniSol TMS for maintenance-driven automatic consumption updates
-• Seamless connection with AniSol Procurement for stock shortage management
-
-**Technical Integration:**
-• ERP/Accounts synchronization for real-time inventory valuation and asset movement tracking
-• Ship and cloud deployment options with offline operation capability and automatic synchronization
-• Ultra-low bandwidth optimization for satellite communication environments
-
-**Operational Benefits:**
-• Reduced stockouts through predictive inventory management
-• Lower inventory carrying costs with optimized stock levels
-• Complete audit compliance with regulatory requirements
-• Streamlined procurement processes with automated requisition generation
-
-For detailed implementation planning and system configuration, contact info@aniketsolutions.com"""
+Contact info@aniketsolutions.com for implementation details."""
 
         elif category == 'payroll':
-            return f"""**AniSol Payroll & Master Cash System** - Comprehensive Crew Financial Management
+            return """**AniSol Payroll & Master Cash** - Maritime crew financial management with compliance features.
 
-AniSol Payroll & Master Cash System handles complete crew financial management with maritime-specific workflows, multi-currency support, and comprehensive compliance requirements.
+**Key Features:**
+• Automated payroll with overtime and allowances
+• Multi-currency support and exchange rates
+• Master's cash and petty cash management
+• Portage bill generation and audit trails
+• Integration with accounting systems
 
-**Comprehensive Payroll Management:**
-• Automated wage calculations including overtime, bonuses, allowances, and contract-based automation
-• Integration with crew agreements for seamless payroll processing
-• Multi-currency support with real-time exchange rate handling and conversion
-• Split-company settlements for complex ownership structures and joint ventures
-• Salary advance tracking with configurable approval workflows and repayment schedules
-
-**Advanced Cash Management:**
-• Master's cash advance issuance with tracking and reconciliation capabilities
-• Digital petty cash voucher system with multi-level approval controls
-• Comprehensive spend category tagging for detailed expense analysis and budgeting
-• Onboard cash expenditure monitoring with real-time balance tracking
-
-**Compliance & Audit Features:**
-• Formal portage bill generation with complete audit trails and crew sign-off documentation
-• Export capabilities for shore payroll systems and accounting integration
-• Multi-level approval workflows for enhanced financial controls and authorization
-• Complete historical ledger with secure backup archiving and disaster recovery
-• Regulatory compliance support for maritime labor standards and flag state requirements
-
-**Integration & Deployment:**
-• Seamless integration with accounting systems and ERP platforms
-• Cloud-hosted or ship-based deployment options with flexible architecture
-• Modular design enabling standalone operation or full integration with other AniSol modules
-• Designed specifically for maritime operational requirements and constraints
-
-**Security & Access Control:**
-• Role-based access controls with department-level security restrictions
-• Encrypted data transmission and storage with secure authentication protocols
-• Comprehensive audit logging for all financial transactions and system access
-
-For payroll system configuration and maritime compliance setup, contact info@aniketsolutions.com"""
+Contact info@aniketsolutions.com for setup consultation."""
 
         elif category == 'crewing':
-            return f"""**AniSol Crewing Module** - Complete Crew Lifecycle Management System
+            return """**AniSol Crewing Module** - Complete crew lifecycle management for maritime operations.
 
-AniSol Crewing Module provides comprehensive crew management from recruitment through contract completion, designed specifically for maritime operational requirements and international regulatory compliance.
+**Key Features:**
+• Crew scheduling and deployment planning
+• Document and certification management
+• STCW and MLC compliance tracking
+• Performance appraisals and training records
+• Payroll and cash management integration
 
-**Comprehensive Crew Administration:**
-• Complete payroll and wages accounting with maritime-specific calculations and allowances
-• Multi-currency payment processing with automated exchange rate management
-• Salary advance and loan tracking with configurable approval workflows
-• Formal portage bill generation and crew sign-off documentation with audit compliance
-
-**Document & Certification Management:**
-• Centralized repository for crew documents, certifications, and endorsements
-• Automated expiry alerts for certificates with configurable notification timelines
-• Flag state, STCW, and MLC compliance tracking with regulatory reporting
-• Digital document storage with secure access controls and version management
-• Integration with training records and competency assessments
-
-**Advanced Operational Management:**
-• Crew scheduling and deployment planning with rotation optimization
-• Contract monitoring and automated renewal notifications
-• Shore leave tracking with approval workflows and compliance monitoring
-• Performance appraisals with structured competency assessments and career development
-• Crew availability tracking and resource allocation across fleet operations
-
-**Financial Integration Capabilities:**
-• Master's cash and petty cash management with reconciliation
-• Provisions and slop chest accounting with inventory integration
-• Cost control and budget tracking with departmental allocation
-• Seamless integration with accounting systems and financial reporting
-
-**Technical Architecture & Compliance:**
-• Cloud-first scalable infrastructure with enterprise-grade security
-• Integration with other AniSol modules for unified fleet management
-• Secure backup and disaster recovery with geo-redundant storage
-• Role-based access controls with audit logging for all crew data access
-• GDPR compliance and data protection protocols for international operations
-
-**Reporting & Analytics:**
-• Comprehensive reporting suite for operational and regulatory requirements
-• Performance analytics and crew utilization optimization
-• Cost analysis and budget forecasting capabilities
-• Custom report generation with automated distribution
-
-For crew management system implementation and regulatory compliance setup, contact info@aniketsolutions.com"""
+Contact info@aniketsolutions.com for crew management consultation."""
 
         elif category == 'tms':
-            return f"""**AniSol TMS (Technical Management System)** - Smart Maintenance & Real Maritime Insight
+            return """**AniSol TMS** - Technical Management System for maritime maintenance and compliance.
 
-AniSol TMS provides comprehensive maintenance management designed specifically for maritime operations with real-world vessel requirements, bandwidth constraints, and regulatory compliance needs.
+**Key Features:**
+• Planned and unplanned maintenance scheduling
+• PSC inspection and class survey tracking
+• Work order management and history
+• Certificate lifecycle management
+• Integration with inventory for spare parts
 
-**Advanced Maintenance Operations:**
-• **Planned Maintenance Scheduling** - Calendar-based, counter-based, and condition-based scheduling with automated work order generation
-• **Unplanned Maintenance Management** - One-click breakdown reporting with rapid response workflows
-• **Work Order Lifecycle** - Complete generation, assignment, execution, and completion tracking with resource allocation
-• **Maintenance History Analysis** - Trend identification, performance analytics, and predictive maintenance insights
-
-**Comprehensive Inspection & Compliance:**
-• **PSC (Port State Control)** inspection tracking with deficiency management and resolution monitoring
-• **Class Survey Management** - Automated scheduling, preparation checklists, and completion verification
-• **Defect Management** - Identification, categorization, tracking, and resolution with priority-based workflows
-• **Certificate Lifecycle Management** - Comprehensive tracking with automated renewal alerts and regulatory compliance
-
-**Intelligent System Integration:**
-• **Direct Inventory Integration** - Seamless linking of spare parts to maintenance work orders with automatic consumption tracking
-• **Technical Dashboard** - Real-time vessel health monitoring with drill-down analytics and performance assessment
-• **Digital Reporting Suite** - Calibration management, decarbonization tracking, bearing measurements, and regulatory reporting
-• **Performance Analytics** - Equipment reliability analysis, maintenance cost optimization, and operational efficiency metrics
-
-**Maritime-Optimized Design:**
-• **Developed by Seafarers** - Practical ship operations focus with real-world workflow optimization
-• **Unified Interface** - Most operations accessible from single screen with intuitive navigation
-• **No Dedicated Server** - Any onboard computer capable of hosting with minimal hardware requirements
-• **Ultra-Low Bandwidth** - Optimized for satellite communications with intelligent data compression
-
-**Security & Access Management:**
-• **Multi-Layer Access Control** - Role-based permissions with department-level security restrictions
-• **Complete Audit Trails** - All maintenance activities logged with timestamp and user tracking
-• **Offline Operation** - Full functionality without internet connection with automatic synchronization when connected
-• **Ship-Shore Integration** - Seamless data exchange with shore-based technical management teams
-
-**Regulatory Compliance:**
-• **ISM Code Compliance** - Integrated safety management system support
-• **Class Society Requirements** - Automated compliance tracking and reporting
-• **Flag State Regulations** - Customizable compliance frameworks for different maritime jurisdictions
-
-For vessel-specific TMS configuration and technical implementation, contact info@aniketsolutions.com"""
+Contact info@aniketsolutions.com for technical implementation."""
 
         elif category == 'procurement':
-            return f"""**AniSol Procurement System** - AI-Powered Maritime Purchasing Platform
+            return """**AniSol Procurement** - AI-powered maritime purchasing platform with vendor management.
 
-AniSol Procurement provides comprehensive AI-powered maritime purchasing capabilities with advanced vendor management, automated workflow processing, and intelligent cost optimization.
+**Key Features:**
+• Multi-type requisition management
+• Vendor database and performance tracking
+• Automated approval workflows
+• ShipServ integration and quote comparison
+• Budget control and audit logging
 
-**Advanced Requisition Management:**
-• **Multiple Requisition Types** - Spares & stores, repair jobs, service orders, adhoc requests, and framework agreements
-• **Framework Agreement Support** - Long-term contract management for recurring purchases with automated pricing
-• **Inventory Integration** - Direct linking between inventory requirements and procurement requests with automated reordering
-• **Automated PO Generation** - Intelligent purchase order creation from RFQ responses with vendor comparison analytics
-
-**Comprehensive Vendor Operations:**
-• **Centralized Vendor Database** - Complete vendor master with performance tracking, rating systems, and compliance monitoring
-• **Supplier Quote Management** - Multi-format quote import (CSV, Excel, ShipServ integration) with automated comparison
-• **Vendor Performance Analytics** - Real-time rating systems, delivery performance tracking, and quality assessments
-• **ShipServ Integration** - Catalog synchronization, enhanced sourcing capabilities, and industry-standard procurement workflows
-
-**Intelligent Approval & Control Systems:**
-• **Configurable Approval Workflows** - Cost thresholds, vessel-specific rules, user role-based authorization, and project-specific approvals
-• **Budget Control Integration** - Budget code linking at requisition level with real-time budget tracking and variance analysis
-• **Invoice Matching** - 2-way and 3-way matching capabilities with automated discrepancy identification
-• **Complete Audit Logging** - Full traceability from initial requisition through final payment with regulatory compliance
-
-**AI-Powered Analytics & Optimization:**
-• **Procurement Decision Support** - AI-driven recommendations for vendor selection and cost optimization
-• **Live Performance Dashboards** - Real-time spend analysis, supplier performance monitoring, and procurement KPIs
-• **Cost Optimization Algorithms** - Automated identification of cost-saving opportunities and bulk purchasing recommendations
-• **Predictive Analytics** - Demand forecasting and procurement planning with seasonal adjustment capabilities
-
-**Technical Features & Integration:**
-• **Low-Bandwidth Synchronization** - Optimized for vessel operations with satellite communication constraints
-• **IHM Export Support** - Inventory of Hazardous Materials compliance with regulator-ready purchase data
-• **System Integration** - Seamless connectivity with inventory management and technical management systems
-• **Real-Time Delivery Tracking** - Automated status updates with delivery confirmation and inventory auto-matching
-
-**Maritime-Specific Capabilities:**
-• **Port Agent Integration** - Local supplier network management with port-specific procurement workflows
-• **Emergency Procurement** - Rapid approval processes for critical operational requirements
-• **Multi-Currency Processing** - Global supplier management with automated currency conversion and cost comparison
-• **Regulatory Compliance** - Support for maritime procurement regulations and documentation requirements
-
-For procurement system implementation and vendor integration planning, contact info@aniketsolutions.com"""
+Contact info@aniketsolutions.com for procurement setup."""
 
     # Fallback for products
-    return f"""**AniSol Maritime Software Suite** - Integrated Fleet Management Solutions
+    return """**AniSol Maritime Software Suite** - Integrated fleet management solutions:
 
-Our comprehensive maritime software portfolio addresses core operational requirements for modern fleet management with integrated modules and regulatory compliance.
+• **TMS** - Technical maintenance management
+• **Procurement** - AI-powered purchasing
+• **Inventory** - Fleet-wide stock control
+• **Crewing** - Crew lifecycle management
+• **Payroll** - Maritime financial management
 
-**Available Products:**
-
-**AniSol TMS** - Technical Management System for maintenance scheduling, inspection tracking, and equipment lifecycle management
-
-**AniSol Procurement** - AI-powered purchasing platform with vendor management and cost optimization
-
-**AniSol Inventory Control** - Fleet-wide inventory management with real-time tracking and automated reordering
-
-**AniSol Crewing Module** - Complete crew lifecycle management with compliance tracking and performance analytics
-
-**AniSol Payroll & Master Cash** - Maritime-specific payroll processing with multi-currency support
-
-**Integrated Architecture:**
-• Seamless data flow between all modules for unified operations
-• Ship and cloud deployment options with offline operational capability
-• Ultra-low bandwidth optimization for satellite communication environments
-• Comprehensive audit trails and regulatory compliance reporting
-
-For specific product information or implementation requirements, please specify which operational area interests you, or contact info@aniketsolutions.com for detailed consultation."""
+Contact info@aniketsolutions.com for product consultation."""
 
 def get_service_response_enhanced(query):
     """Enhanced service response using comprehensive keyword matching"""
@@ -870,136 +710,92 @@ def get_service_response_enhanced(query):
     # Get the best matching category
     category, confidence, matched_keywords = get_best_match_category(query)
     
-    # If we have a good match (confidence > 0.3) and it's a service category
-    if confidence > 0.3 and category in ['custom_development', 'mobile', 'ai_ml', 'data_services', 'integration', 'chatbot']:
+    # If we have a good match (confidence > 0.25) and it's a service category
+    if confidence > 0.25 and category in ['custom_development', 'mobile', 'ai_ml', 'data_services', 'integration', 'chatbot']:
         
         if category == 'chatbot':
-            return f"""**AI Chatbot & Virtual Assistant Services** - Intelligent Customer Service Automation
+            return """**AI Chatbot & Virtual Assistant Services** - Intelligent customer service automation with 24/7 support capabilities.
 
-Our AI Chatbot and Virtual Assistant services provide sophisticated customer service automation with natural language processing capabilities, ensuring 24/7 business support with human-like interaction quality.
+**Key Features:**
+• Natural language conversation management
+• Multi-channel deployment (website, WhatsApp, SMS)
+• Smart escalation to human agents
+• CRM integration and analytics
+• Custom knowledge base training
 
-**Advanced Chatbot Capabilities:**
-• **Intelligent Conversation Management** - Context-aware dialogue systems with memory retention and multi-turn conversation handling
-• **Multi-Language Support** - Global customer base support with real-time translation and culturally-appropriate responses
-• **Smart Customer Routing** - Intelligent escalation to human agents based on conversation complexity and customer sentiment analysis
-• **Appointment Scheduling** - Calendar integration with availability checking, booking confirmation, and automated reminder systems
-• **Lead Qualification** - Automated information collection, scoring, and CRM integration for sales pipeline management
-
-**Technical Implementation & AI Features:**
-• **Natural Language Understanding (NLU)** - Advanced intent recognition, entity extraction, and contextual response generation
-• **Machine Learning Integration** - Continuous conversation improvement through user interaction analysis and response optimization
-• **Sentiment Analysis** - Real-time emotion detection for customer satisfaction monitoring and appropriate response adjustment
-• **Knowledge Base Integration** - Dynamic access to business-specific information, product catalogs, and service documentation
-• **Conversation Analytics** - Detailed insights into customer interactions, common inquiries, and performance metrics
-
-**Multi-Channel Deployment Options:**
-• **Website Integration** - Embedded chat widgets with customizable design matching brand identity and user experience
-• **WhatsApp Business** - Official WhatsApp integration for secure customer communication with rich media support
-• **Facebook Messenger** - Social media customer service with automated responses and seamless human handoff
-• **SMS & Text Messaging** - Mobile-first customer support with two-way messaging and automated workflows
-• **Voice Integration** - Phone-based customer interactions with speech-to-text and text-to-speech capabilities
-
-**Industry-Specific Applications:**
-• **Retail & E-commerce** - Product information, order tracking, return processing, size guides, and inventory inquiries
-• **Healthcare** - Appointment scheduling, basic medical information, prescription reminders, and patient pre-screening
-• **Professional Services** - Service inquiries, quote requests, consultation scheduling, and client onboarding assistance
-• **Real Estate** - Property information, viewing appointments, market data, and mortgage calculation assistance
-• **Restaurants & Hospitality** - Reservations, menu information, order processing, and special event bookings
-
-**Advanced Features & Customization:**
-• **Custom Knowledge Base** - Business-specific information integration with product details, service descriptions, and company policies
-• **Workflow Automation** - Complex business process handling including form completion, application processing, and data collection
-• **CRM Integration** - Seamless customer data synchronization with existing customer relationship management systems
-• **Analytics Dashboard** - Comprehensive conversation insights, performance metrics, and customer satisfaction tracking
-• **A/B Testing Capabilities** - Conversation optimization through response testing and performance comparison
-
-**Business Benefits & ROI:**
-• **24/7 Availability** - Continuous customer service without staffing costs or time zone limitations
-• **Immediate Response Times** - Instant customer support improving satisfaction and reducing abandonment rates
-• **Scalable Customer Support** - Handle unlimited simultaneous conversations without proportional staff increases
-• **Cost Reduction** - Significant reduction in customer service operational expenses and support ticket volume
-• **Data Collection & Insights** - Valuable customer behavior data and frequently asked questions analysis
-
-**Implementation Process:**
-• **Requirements Analysis** - Business process evaluation, customer journey mapping, and chatbot scope definition
-• **Custom Training** - Domain-specific conversation training with business terminology and industry knowledge
-• **Integration Development** - Seamless connectivity with existing business systems, databases, and communication platforms
-• **Testing & Optimization** - Comprehensive conversation testing, accuracy validation, and performance optimization
-• **Deployment & Monitoring** - Production deployment with ongoing performance monitoring and continuous improvement
-
-For chatbot implementation planning and customization consultation, contact info@aniketsolutions.com"""
+Contact info@aniketsolutions.com for chatbot implementation."""
 
         elif category == 'custom_development':
-            return f"""**Custom Application Development** - Tailored Software Solutions for Business Excellence
+            return """**Custom Application Development** - Tailored software solutions for specific business requirements.
 
-Our Custom Application Development services address specific business requirements through comprehensive software solutions designed for operational efficiency, scalability, and long-term business value.
+**Key Features:**
+• Enterprise web and desktop applications
+• Modern frameworks (React, Angular, Node.js)
+• Database design and API development
+• Legacy system modernization
+• Cloud deployment and scaling
 
-**Development Capabilities & Technologies:**
-• **Enterprise Web Applications** - Modern, responsive applications using cutting-edge frameworks (React, Angular, Vue.js) with progressive web app capabilities
-• **Backend Architecture** - Robust server-side systems with Node.js, Python (Django/Flask), Java (Spring), .NET Core architectures
-• **Database Solutions** - PostgreSQL, MySQL, MongoDB implementations with optimization, clustering, and backup strategies
-• **API Development** - RESTful APIs, GraphQL endpoints, and microservices architecture with scalable cloud deployment
-• **Legacy Modernization** - Systematic upgrade of outdated systems while preserving critical functionality and data integrity
+Contact info@aniketsolutions.com for development consultation."""
 
-**Industry-Specific Applications:**
-• **Manufacturing** - Production management systems, quality control platforms, supply chain optimization, and IoT integration
-• **Healthcare** - Patient management systems, electronic health records, compliance tracking platforms, and telemedicine solutions
-• **Finance** - Risk assessment systems, automated reporting platforms, regulatory compliance tools, and fraud detection systems
-• **Logistics** - Supply chain optimization, inventory management, route planning, and real-time tracking systems
-• **Maritime** - Vessel operations management, crew scheduling, maintenance tracking, and regulatory compliance systems
+        elif category == 'mobile':
+            return """**Mobile Application Development** - Native and cross-platform mobile solutions.
 
-**Comprehensive Development Process:**
-• **Discovery & Analysis** - Requirements gathering, stakeholder interviews, technical feasibility assessment, and project scope definition
-• **Architecture Design** - System architecture planning, technology stack selection, scalability considerations, and security framework design
-• **Agile Development** - Iterative development methodology with regular stakeholder feedback, sprint planning, and continuous integration
-• **Quality Assurance** - Comprehensive testing including unit testing, integration testing, security validation, and performance optimization
-• **Deployment & Support** - Production deployment planning, monitoring setup, ongoing maintenance, and technical support services
+**Key Features:**
+• iOS and Android native development
+• Cross-platform solutions (React Native, Flutter)
+• Offline capabilities and data sync
+• Enterprise integration and security
+• App store deployment support
 
-**Technical Standards & Best Practices:**
-• **Modern Development Practices** - Code quality standards, version control, automated testing, and continuous deployment pipelines
-• **Security Implementation** - Industry best practices including data encryption, secure authentication, authorization protocols, and vulnerability assessments
-• **Cloud Deployment** - AWS, Azure, Google Cloud deployment options with auto-scaling, load balancing, and disaster recovery
-• **Mobile Responsiveness** - Cross-platform accessibility with responsive design principles and mobile-first development approach
+Contact info@aniketsolutions.com for mobile development."""
 
-**Ongoing Support & Maintenance:**
-• **Technical Support** - Dedicated support team with SLA-based response times and issue resolution
-• **System Monitoring** - 24/7 monitoring with automated alerts, performance tracking, and proactive maintenance
-• **Feature Enhancement** - Continuous improvement based on user feedback and business requirements evolution
-• **Training & Documentation** - Comprehensive user training, technical documentation, and knowledge transfer
+        elif category == 'ai_ml':
+            return """**AI & Machine Learning Services** - Intelligent automation and predictive analytics solutions.
 
-For detailed project assessment and technical consultation, contact info@aniketsolutions.com"""
+**Key Features:**
+• Predictive analytics and forecasting
+• Natural language processing
+• Computer vision and automation
+• Custom AI model development
+• Business intelligence integration
 
-        # Add other service responses here (mobile, ai_ml, data_services, integration)
-        # [Previous implementations remain the same]
+Contact info@aniketsolutions.com for AI consultation."""
+
+        elif category == 'data_services':
+            return """**Data Services & Migration** - Database solutions and business intelligence platforms.
+
+**Key Features:**
+• Database migration and optimization
+• Data warehousing and analytics
+• Business intelligence dashboards
+• ETL processes and data integration
+• Cloud data platform setup
+
+Contact info@aniketsolutions.com for data consultation."""
+
+        elif category == 'integration':
+            return """**System Integration Services** - Connecting business applications and data flow automation.
+
+**Key Features:**
+• API development and management
+• ERP and CRM integration
+• Real-time data synchronization
+• Cloud and on-premise connectivity
+• Workflow automation
+
+Contact info@aniketsolutions.com for integration planning."""
 
     # Fallback for services
-    return f"""**Aniket Solutions Technology Services** - Comprehensive Business Technology Solutions
+    return """**Technology Services Portfolio** - Comprehensive business technology solutions:
 
-Our Technology Services portfolio addresses diverse business modernization requirements through specialized expertise, proven methodologies, and cutting-edge technology implementation.
+• **Custom Development** - Tailored software solutions
+• **Mobile Apps** - iOS/Android development
+• **AI & ML** - Intelligent automation
+• **Data Services** - Migration and analytics
+• **Integration** - System connectivity
+• **Chatbots** - Customer service automation
 
-**Available Services:**
-
-**Custom Application Development** - Enterprise software solutions, legacy modernization, and bespoke application development
-
-**Mobile Solutions** - Native iOS/Android applications, cross-platform development, and progressive web apps
-
-**AI & Machine Learning** - Intelligent automation, predictive analytics, natural language processing, and computer vision
-
-**Data Services** - Database migration, data warehousing, business intelligence, and analytics platform development
-
-**System Integration** - API development, enterprise application connectivity, and hybrid cloud-premise architectures
-
-**AI Chatbots & Virtual Assistants** - Conversational AI, customer service automation, and multi-channel deployment
-
-**Implementation Approach:**
-• Requirements analysis and technical architecture design
-• Agile development methodology with iterative stakeholder feedback
-• Quality assurance with security and performance validation
-• Deployment planning with comprehensive technical support
-
-**Industry Expertise:** Maritime operations, manufacturing automation, healthcare compliance, financial services, retail technology
-
-For specific service consultation or implementation requirements, please specify which technology challenge you'd like to address, or contact info@aniketsolutions.com for detailed discussion."""
+Contact info@aniketsolutions.com for service consultation."""
 
 # Enhanced smart response function that uses the comprehensive keyword matching
 def generate_smart_response_enhanced(user_message):
