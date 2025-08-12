@@ -275,7 +275,7 @@ def add_inactivity_javascript():
 # =============================================================================
 
 def keep_alive_system():
-    """ENHANCED keep-alive system with more aggressive timing"""
+    """SMART keep-alive system that doesn't interfere with conversations"""
     
     # Initialize session state for activity tracking
     if "last_activity" not in st.session_state:
@@ -295,12 +295,23 @@ def keep_alive_system():
         st.session_state.interaction_count += 1
         st.session_state.last_message_count = current_message_count
     
-    # MUCH more aggressive auto-refresh - refresh if inactive for 3 minutes instead of 8
+    # MUCH LONGER auto-refresh - only if inactive for 15 minutes AND not in active conversation
     time_since_activity = current_time - st.session_state.last_activity
     uptime = current_time - st.session_state.app_start_time
     
-    # Refresh if inactive too long (but not immediately on first load)
-    if time_since_activity.total_seconds() > 180 and uptime.total_seconds() > 60:  # 3 minutes instead of 8
+    # Only refresh if:
+    # 1. Inactive for 15+ minutes AND
+    # 2. Not in middle of conversation (not waiting for user input) AND  
+    # 3. App has been running for more than 1 minute
+    in_conversation = (
+        st.session_state.conversation_flow.get("otp_verified") and
+        not st.session_state.conversation_flow.get("awaiting_selection") and
+        not st.session_state.conversation_flow.get("conversation_ended")
+    )
+    
+    if (time_since_activity.total_seconds() > 900 and  # 15 minutes instead of 3
+        uptime.total_seconds() > 60 and
+        not in_conversation):  # Don't refresh during active conversations
         st.session_state.last_activity = current_time
         st.session_state.heartbeat_count += 1
         # Force a rerun to keep the app alive
