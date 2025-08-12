@@ -104,10 +104,10 @@ def check_conversation_inactivity():
             
             return False
         
-        # If waiting for final response and 1 minute has passed
+        # If waiting for final response and 3 minutes has passed
         elif (st.session_state.waiting_for_final_response and 
               st.session_state.inactivity_timer_start and
-              (current_time - st.session_state.inactivity_timer_start).total_seconds() > 60):  # 1 minute
+              (current_time - st.session_state.inactivity_timer_start).total_seconds() > 180):  # 3 minutes
             
             # End conversation
             st.session_state.conversation_ended = True
@@ -1628,7 +1628,7 @@ with st.sidebar:
     if (st.session_state.get("waiting_for_final_response") and 
         st.session_state.get("inactivity_timer_start")):
         
-        time_remaining = 60 - (datetime.now() - st.session_state.inactivity_timer_start).total_seconds()
+        time_remaining = 180 - (datetime.now() - st.session_state.inactivity_timer_start).total_seconds()
         if time_remaining > 0:
             st.warning(f"⏰ Conversation will close in {int(time_remaining)} seconds")
         else:
