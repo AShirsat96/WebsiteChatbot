@@ -1461,15 +1461,43 @@ add_server_side_keepalive()  # NEW: Server-side heartbeat
 # Custom CSS for better styling and hide sidebar completely
 st.markdown("""
 <style>
-    /* Hide sidebar completely */
+    /* Hide sidebar completely and fix spacing */
     .css-1d391kg {display: none !important;}
     .css-1rs6os {display: none !important;}
     .css-17eq0hr {display: none !important;}
     section[data-testid="stSidebar"] {display: none !important;}
+    div[data-testid="stSidebarNav"] {display: none !important;}
     
+    /* Fix main app container spacing */
     .stApp {
         max-width: 800px;
         margin: 0 auto;
+        padding-top: 1rem !important;
+    }
+    
+    /* Remove top padding/margin from main content */
+    .main .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        max-width: 800px;
+    }
+    
+    /* Hide Streamlit header and menu */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+    
+    .css-1y4p8pa {
+        padding-top: 0rem !important;
+    }
+    
+    /* Fix any extra spacing */
+    .element-container {
+        margin: 0 !important;
+    }
+    
+    .stMarkdown {
+        margin-bottom: 0.5rem;
     }
     
     .chat-message {
