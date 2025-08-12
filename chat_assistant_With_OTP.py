@@ -53,8 +53,81 @@ st.set_page_config(
 )
 
 # =============================================================================
+# ENHANCED SERVER-SIDE KEEP-ALIVE
+# =============================================================================
+
+def add_server_side_keepalive():
+    """Add server-side keep-alive that runs every page load"""
+    # Auto-increment a counter every time the page loads/refreshes
+    if "server_heartbeat_count" not in st.session_state:
+        st.session_state.server_heartbeat_count = 0
+    
+    st.session_state.server_heartbeat_count += 1
+    
+    # Hidden element that forces server activity
+    st.markdown(f"""
+    <div style="display: none;" id="heartbeat-{st.session_state.server_heartbeat_count}">
+        Server heartbeat: {datetime.now().strftime('%H:%M:%S')}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Add META refresh as ultimate backup for inactivity detection
+    st.markdown("""
+    <meta http-equiv="refresh" content="210">
+    <script>
+    // Override meta refresh if user is active
+    let metaRefresh = document.querySelector('meta[http-equiv="refresh"]');
+    let userActive = false;
+    
+    // Track if user has been active in last 3 minutes
+    ['click', 'keypress', 'scroll', 'mousemove', 'touchstart', 'input'].forEach(event => {
+        document.addEventListener(event, function() {
+            userActive = true;
+            // Remove meta refresh if user is active
+            if (metaRefresh) {
+                metaRefresh.remove();
+                metaRefresh = null;
+            }
+        }, { passive: true, once: true });
+    });
+    
+    console.log('Meta refresh backup set for 3.5 minutes');
+    </script>
+    """, unsafe_allow_html=True)
+    
+    # Force a tiny server operation every page load
+    current_time = datetime.now()
+    if "last_server_ping" not in st.session_state:
+        st.session_state.last_server_ping = current_time
+    
+    # Update server ping timestamp
+    st.session_state.last_server_ping = current_time
+
+# =============================================================================
 # CONVERSATION INACTIVITY AND ENDING LOGIC
 # =============================================================================
+
+def check_auto_reset():
+    """Check if conversation should auto-reset after ending"""
+    if (st.session_state.get("auto_reset_triggered") and 
+        st.session_state.get("auto_reset_time")):
+        
+        current_time = datetime.now()
+        time_since_reset_trigger = (current_time - st.session_state.auto_reset_time).total_seconds()
+        
+        # Auto-reset after 10 seconds of showing the closure message
+        if time_since_reset_trigger > 10:
+            # Clear ALL session state for complete reset
+            keys_to_keep = []  # Don't keep anything - complete fresh start
+            
+            for key in list(st.session_state.keys()):
+                if key not in keys_to_keep:
+                    del st.session_state[key]
+            
+            # Force immediate rerun to restart chatbot
+            st.rerun()
+    
+    return False
 
 def check_conversation_inactivity():
     """Check for conversation inactivity and handle ending logic"""
@@ -126,6 +199,10 @@ For further assistance, please:
 
 We look forward to helping you with your technology needs!""")
             
+            # AUTOMATIC RESET: Clear all session state and restart after 10 seconds
+            st.session_state.auto_reset_triggered = True
+            st.session_state.auto_reset_time = current_time
+            
             return True
     
     return False
@@ -142,26 +219,43 @@ def update_user_activity():
         st.session_state.inactivity_timer_start = None
 
 def add_inactivity_javascript():
-    """Add JavaScript to handle real-time inactivity checking"""
+    """Add JavaScript to handle real-time inactivity checking with forced rerun"""
     js_code = """
     <script>
     let inactivityTimer;
     let lastActivityTime = Date.now();
+    let inactivityCheckInterval;
     
     function resetInactivityTimer() {
         lastActivityTime = Date.now();
         clearTimeout(inactivityTimer);
         
+        console.log('Activity detected - resetting 3-minute timer');
+        
         // Set timer for 3 minutes of inactivity
         inactivityTimer = setTimeout(function() {
-            console.log('3 minutes of inactivity detected');
-            // Trigger a page refresh to check server-side inactivity logic
+            console.log('3 minutes of inactivity detected - forcing page refresh to trigger server check');
+            // Force a page refresh to trigger server-side inactivity logic
             window.location.reload();
         }, 180000); // 3 minutes
     }
     
+    // CRITICAL: Check every 30 seconds if we should trigger inactivity
+    inactivityCheckInterval = setInterval(function() {
+        const timeSinceActivity = Date.now() - lastActivityTime;
+        
+        if (timeSinceActivity >= 180000) { // 3 minutes
+            console.log('Inactivity check: 3+ minutes detected, forcing refresh');
+            clearInterval(inactivityCheckInterval);
+            window.location.reload();
+        } else {
+            const remaining = (180000 - timeSinceActivity) / 1000;
+            console.log(`Inactivity check: ${Math.round(remaining)} seconds until timeout`);
+        }
+    }, 30000); // Check every 30 seconds
+    
     // Monitor user interactions
-    const events = ['click', 'keypress', 'scroll', 'mousemove', 'touchstart'];
+    const events = ['click', 'keypress', 'scroll', 'mousemove', 'touchstart', 'input', 'change'];
     events.forEach(event => {
         document.addEventListener(event, resetInactivityTimer, { passive: true });
     });
@@ -169,7 +263,29 @@ def add_inactivity_javascript():
     // Initial timer setup
     resetInactivityTimer();
     
-    console.log('Inactivity monitoring initialized');
+    // Page visibility change handling
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            console.log('Page became visible - checking inactivity status');
+            const timeSinceActivity = Date.now() - lastActivityTime;
+            if (timeSinceActivity >= 180000) {
+                console.log('Page visible but 3+ minutes inactive - forcing refresh');
+                window.location.reload();
+            }
+        }
+    });
+    
+    // Window focus handling
+    window.addEventListener('focus', function() {
+        console.log('Window focused - checking inactivity status');
+        const timeSinceActivity = Date.now() - lastActivityTime;
+        if (timeSinceActivity >= 180000) {
+            console.log('Window focused but 3+ minutes inactive - forcing refresh');
+            window.location.reload();
+        }
+    });
+    
+    console.log('Enhanced inactivity monitoring initialized - will check every 30 seconds');
     </script>
     """
     st.markdown(js_code, unsafe_allow_html=True)
@@ -179,7 +295,7 @@ def add_inactivity_javascript():
 # =============================================================================
 
 def keep_alive_system():
-    """Advanced keep-alive system to prevent Streamlit app from sleeping"""
+    """ENHANCED keep-alive system with more aggressive timing"""
     
     # Initialize session state for activity tracking
     if "last_activity" not in st.session_state:
@@ -199,54 +315,82 @@ def keep_alive_system():
         st.session_state.interaction_count += 1
         st.session_state.last_message_count = current_message_count
     
-    # Auto-refresh logic - refresh if inactive for 8 minutes
+    # MUCH more aggressive auto-refresh - refresh if inactive for 3 minutes instead of 8
     time_since_activity = current_time - st.session_state.last_activity
     uptime = current_time - st.session_state.app_start_time
     
     # Refresh if inactive too long (but not immediately on first load)
-    if time_since_activity.total_seconds() > 480 and uptime.total_seconds() > 60:  # 8 minutes
+    if time_since_activity.total_seconds() > 180 and uptime.total_seconds() > 60:  # 3 minutes instead of 8
         st.session_state.last_activity = current_time
         st.session_state.heartbeat_count += 1
+        # Force a rerun to keep the app alive
         st.rerun()
 
 def add_javascript_keepalive():
-    """Add comprehensive JavaScript keep-alive system"""
+    """Add comprehensive JavaScript keep-alive system with aggressive timing"""
     js_code = """
     <script>
-    // Advanced Keep-alive system for Streamlit
+    // AGGRESSIVE Keep-alive system for Streamlit
     let keepAliveInterval;
     let activityTimeout;
     let heartbeatCount = 0;
+    let isPageVisible = true;
     
     function logActivity(action) {
         console.log(`Keep-alive: ${action} at ${new Date().toLocaleTimeString()}`);
     }
     
     function sendHeartbeat() {
-        fetch(window.location.href, {
-            method: 'HEAD',
-            cache: 'no-cache'
-        }).then(() => {
+        // Multiple heartbeat methods for redundancy
+        Promise.all([
+            // Method 1: HEAD request
+            fetch(window.location.href, {
+                method: 'HEAD',
+                cache: 'no-cache',
+                mode: 'no-cors'
+            }).catch(() => {}),
+            
+            // Method 2: GET request to favicon (lighter)
+            fetch('/favicon.ico', {
+                method: 'GET',
+                cache: 'no-cache',
+                mode: 'no-cors'
+            }).catch(() => {}),
+            
+            // Method 3: Streamlit-specific ping
+            fetch('/_stcore/health', {
+                method: 'GET',
+                cache: 'no-cache'
+            }).catch(() => {})
+        ]).then(() => {
             heartbeatCount++;
-            logActivity(`Heartbeat #${heartbeatCount} sent`);
+            logActivity(`Multi-heartbeat #${heartbeatCount} sent successfully`);
         }).catch(err => {
-            console.warn('Heartbeat failed:', err);
+            console.warn('All heartbeat methods failed:', err);
+            // Force reload if heartbeats consistently fail
+            if (heartbeatCount % 10 === 0) {
+                window.location.reload();
+            }
         });
     }
     
     function resetActivity() {
         clearTimeout(activityTimeout);
-        logActivity('User activity detected');
+        logActivity('User activity detected - resetting timers');
         
-        // Send heartbeat after 7 minutes of inactivity
+        // Much more aggressive timing - send heartbeat after 2 minutes of inactivity
         activityTimeout = setTimeout(function() {
-            logActivity('Inactivity timeout - sending heartbeat');
+            logActivity('2-minute inactivity timeout - sending emergency heartbeat');
             sendHeartbeat();
-        }, 420000); // 7 minutes
+        }, 120000); // 2 minutes instead of 7
     }
     
-    // Monitor user interactions
-    const events = ['click', 'keypress', 'scroll', 'mousemove', 'touchstart'];
+    // Monitor ALL possible user interactions
+    const events = [
+        'click', 'keypress', 'keydown', 'keyup', 'scroll', 'mousemove', 
+        'mousedown', 'mouseup', 'touchstart', 'touchend', 'touchmove',
+        'focus', 'blur', 'resize', 'wheel', 'input', 'change'
+    ];
     events.forEach(event => {
         document.addEventListener(event, resetActivity, { passive: true });
     });
@@ -254,45 +398,81 @@ def add_javascript_keepalive():
     // Initial setup
     resetActivity();
     
-    // Regular heartbeat every 4 minutes
+    // MUCH more frequent heartbeat - every 90 seconds instead of 4 minutes
     keepAliveInterval = setInterval(function() {
-        sendHeartbeat();
-    }, 240000); // 4 minutes
-    
-    // Page visibility change handling
-    document.addEventListener('visibilitychange', function() {
-        if (!document.hidden) {
-            logActivity('Page became visible');
+        if (isPageVisible) {
+            logActivity('Regular 90-second heartbeat');
             sendHeartbeat();
+        }
+    }, 90000); // 90 seconds - very aggressive
+    
+    // Page visibility handling
+    document.addEventListener('visibilitychange', function() {
+        isPageVisible = !document.hidden;
+        if (!document.hidden) {
+            logActivity('Page became visible - immediate heartbeat');
+            sendHeartbeat();
+            resetActivity();
+        } else {
+            logActivity('Page hidden - maintaining background heartbeat');
         }
     });
     
     // Window focus/blur handling
     window.addEventListener('focus', function() {
-        logActivity('Window focused');
+        logActivity('Window focused - immediate heartbeat');
+        sendHeartbeat();
         resetActivity();
     });
     
-    logActivity('Keep-alive system initialized');
-    sendHeartbeat(); // Initial heartbeat
+    window.addEventListener('blur', function() {
+        logActivity('Window blurred - will continue background heartbeat');
+    });
+    
+    // Prevent page unload during active sessions
+    window.addEventListener('beforeunload', function(e) {
+        logActivity('Page attempting to unload');
+        // Don't prevent unload, just log it
+    });
+    
+    // Emergency heartbeat for mobile browsers
+    setInterval(function() {
+        if (document.hidden) {
+            logActivity('Background emergency heartbeat for mobile');
+            sendHeartbeat();
+        }
+    }, 60000); // Every minute when page is hidden
+    
+    logActivity('AGGRESSIVE keep-alive system initialized with 90-second intervals');
+    sendHeartbeat(); // Immediate initial heartbeat
     </script>
     """
     st.markdown(js_code, unsafe_allow_html=True)
 
 def add_auto_refresh():
-    """Add emergency auto-refresh to prevent long-term sleeping"""
+    """Add emergency auto-refresh with inactivity-specific timing"""
     refresh_code = """
     <script>
-    // Emergency auto-refresh after 20 minutes
+    // EMERGENCY auto-refresh after 3.5 minutes to catch missed inactivity
     setTimeout(function(){
-        console.log('Emergency auto-refresh activated to prevent sleep...');
-        // Show user a brief message before refresh
-        if (confirm('App refreshing to maintain connection. Continue?')) {
-            window.location.reload(1);
-        } else {
-            window.location.reload(1); // Refresh anyway after 5 seconds
+        console.log('EMERGENCY: 3.5-minute safety refresh for inactivity detection');
+        window.location.reload(1);
+    }, 210000); // 3.5 minutes - just after the 3-minute inactivity threshold
+    
+    // Additional safety net - ping every 30 seconds when page is active
+    setInterval(function() {
+        if (!document.hidden) {
+            // Create a tiny image request to generate server activity
+            var img = new Image();
+            img.src = '/favicon.ico?' + Date.now();
+            console.log('30-second safety ping sent');
         }
-    }, 1200000); // 20 minutes
+    }, 30000); // Every 30 seconds
+    
+    // Force check inactivity on any Streamlit rerun
+    window.addEventListener('streamlit:rerun', function() {
+        console.log('Streamlit rerun detected - this should trigger inactivity check');
+    });
     </script>
     """
     st.markdown(refresh_code, unsafe_allow_html=True)
@@ -1304,14 +1484,16 @@ def comprehensive_email_validation(email):
     return results
 
 # =============================================================================
-# ACTIVATE KEEP-ALIVE SYSTEMS AND INACTIVITY MONITORING
+# ACTIVATE ALL KEEP-ALIVE SYSTEMS AND INACTIVITY MONITORING
 # =============================================================================
 
+# Run ALL keep-alive systems with enhanced timing
 keep_alive_system()
 add_javascript_keepalive()
 add_auto_refresh()
 add_service_worker()
 add_inactivity_javascript()
+add_server_side_keepalive()  # NEW: Server-side heartbeat
 
 # Custom CSS for better styling and hide sidebar completely
 st.markdown("""
@@ -1372,24 +1554,34 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
     }
     
-    /* Conversation ended styling */
+    /* Conversation ended styling with countdown animation */
     .conversation-ended {
-        background-color: #f8f9fa;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         border: 2px solid #dc3545;
-        border-radius: 10px;
-        padding: 20px;
+        border-radius: 15px;
+        padding: 30px;
         text-align: center;
         margin: 20px 0;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2);
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2); }
+        50% { box-shadow: 0 4px 25px rgba(220, 53, 69, 0.4); }
+        100% { box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2); }
     }
     
     .conversation-ended h3 {
         color: #dc3545;
-        margin-bottom: 10px;
+        margin-bottom: 15px;
+        font-size: 1.5rem;
     }
     
     .conversation-ended p {
         color: #666;
         margin-bottom: 15px;
+        font-size: 1.1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1488,6 +1680,9 @@ if "conversation_flow" not in st.session_state:
 if "otp_data" not in st.session_state:
     st.session_state.otp_data = None
 
+# Check for auto-reset first (before anything else)
+check_auto_reset()
+
 # Check for conversation inactivity BEFORE displaying chat
 conversation_ended = check_conversation_inactivity()
 
@@ -1495,19 +1690,54 @@ conversation_ended = check_conversation_inactivity()
 if len(st.session_state.messages) == 0:
     add_initial_greeting()
 
-# If conversation has ended, show closure message
+# If conversation has ended, show closure message with auto-reset countdown
 if conversation_ended:
-    st.markdown("""
-    <div class="conversation-ended">
-        <h3>🔒 Conversation Closed</h3>
-        <p>This conversation has been closed due to inactivity.</p>
-        <p>Thank you for your interest in Aniket Solutions!</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Calculate time remaining for auto-reset
+    time_remaining = 10
+    if (st.session_state.get("auto_reset_triggered") and 
+        st.session_state.get("auto_reset_time")):
+        time_since_reset = (datetime.now() - st.session_state.auto_reset_time).total_seconds()
+        time_remaining = max(0, 10 - int(time_since_reset))
     
+    if time_remaining > 0:
+        st.markdown(f"""
+        <div class="conversation-ended">
+            <h3>🔒 Conversation Closed</h3>
+            <p>This conversation has been closed due to inactivity.</p>
+            <p>Thank you for your interest in Aniket Solutions!</p>
+            <p style="color: #007bff; font-weight: bold;">
+                🔄 Automatically restarting in {time_remaining} seconds...
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Add JavaScript countdown and auto-refresh
+        st.markdown(f"""
+        <script>
+        let countdown = {time_remaining};
+        const countdownInterval = setInterval(function() {{
+            countdown--;
+            const countdownElement = document.querySelector('.conversation-ended p:last-child');
+            if (countdownElement && countdown > 0) {{
+                countdownElement.innerHTML = '🔄 Automatically restarting in ' + countdown + ' seconds...';
+            }} else if (countdown <= 0) {{
+                clearInterval(countdownInterval);
+                window.location.reload();
+            }}
+        }}, 1000);
+        
+        console.log('Auto-reset countdown started: {time_remaining} seconds');
+        </script>
+        """, unsafe_allow_html=True)
+    else:
+        # Fallback if timing is off
+        st.markdown("🔄 Restarting chatbot...")
+        st.rerun()
+    
+    # Still show manual restart option
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 Start New Conversation", use_container_width=True):
+        if st.button("🔄 Restart Now", use_container_width=True):
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
