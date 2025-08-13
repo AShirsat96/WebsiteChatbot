@@ -15,6 +15,11 @@ import boto3
 from botocore.exceptions import ClientError
 import random
 import string
+import pyodbc
+import uuid
+import pytz
+from typing import Optional, Dict, List, Any
+import pandas as pd
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,6 +33,21 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")  # Default to us-east-1
 SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL")  # Optional - will auto-detect if not specified
 VERIFICATION_BASE_URL = os.getenv("VERIFICATION_BASE_URL", "http://localhost:8501")  # Your app URL
+
+# SQL Server Configuration - ADD THESE TO YOUR .env FILE
+SQL_SERVER = os.getenv("SQL_SERVER", "localhost\\SQLEXPRESS")
+SQL_DATABASE = os.getenv("SQL_DATABASE", "AnisolChatbot")
+SQL_USERNAME = os.getenv("SQL_USERNAME", "")  # Leave empty for Windows Authentication
+SQL_PASSWORD = os.getenv("SQL_PASSWORD", "")  # Leave empty for Windows Authentication
+SQL_DRIVER = os.getenv("SQL_DRIVER", "ODBC Driver 17 for SQL Server")
+
+# Email Report Configuration
+NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "admin@aniketsolutions.com")
+EMAIL_INCLUDE_PERSONAL_DATA = os.getenv("EMAIL_INCLUDE_PERSONAL_DATA", "false").lower() == "true"
+
+# Timezone Configuration
+COMPANY_TIMEZONE = pytz.timezone('Asia/Singapore')
+UTC = pytz.UTC
 
 # Initialize OpenAI client
 client = None
@@ -44,16 +64,485 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
         region_name=AWS_REGION
     )
 
-# Configure the page
-st.set_page_config(
-    page_title="Aniket Solutions - AI Assistant",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# =============================================================================
+# SQL SERVER CONNECTION MANAGER
+# =============================================================================
+
+class SQLServerManager:
+    def __init__(self):
+        self.connection_string = self._build_connection_string()
+        self.connection = None
+    
+    def _build_connection_string(self):
+        """Build SQL Server connection string"""
+        if SQL_USERNAME and SQL_PASSWORD:
+            return f"""
+            DRIVER={{{SQL_DRIVER}}};
+            SERVER={SQL_SERVER};
+            DATABASE={SQL_DATABASE};
+            UID={SQL_USERNAME};
+            PWD={SQL_PASSWORD};
+            TrustServerCertificate=yes;
+            Connection Timeout=30;
+            """
+        else:
+            return f"""
+            DRIVER={{{SQL_DRIVER}}};
+            SERVER={SQL_SERVER};
+            DATABASE={SQL_DATABASE};
+            Trusted_Connection=yes;
+            TrustServerCertificate=yes;
+            Connection Timeout=30;
+            """
+    
+    def get_connection(self):
+        """Get database connection"""
+        try:
+            if not self.connection or self.connection.closed:
+                self.connection = pyodbc.connect(self.connection_string)
+            return self.connection
+        except Exception as e:
+            return None
+    
+    def execute_query(self, query: str, params: tuple = None, fetch: bool = False):
+        """Execute SQL query"""
+        try:
+            conn = self.get_connection()
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            
+            if fetch:
+                if fetch == 'one':
+                    result = cursor.fetchone()
+                else:
+                    result = cursor.fetchall()
+                return result
+            else:
+                conn.commit()
+                return cursor.rowcount
+                
+        except Exception as e:
+            return None
+        finally:
+            if 'cursor' in locals():
+                cursor.close()
 
 # =============================================================================
-# ENHANCED SERVER-SIDE KEEP-ALIVE
+# CONVERSATION STORAGE CLASS
+# =============================================================================
+
+class ConversationStorage:
+    def __init__(self):
+        self.db = SQLServerManager()
+        self.current_conversation_id = None
+        self.message_counter = 0
+    
+    def get_current_time_utc(self):
+        """Get current time in UTC"""
+        return datetime.now(UTC)
+    
+    def start_new_conversation(self, session_id: str, user_ip: str = None, user_agent: str = None):
+        """Start a new conversation record"""
+        try:
+            query = """
+            INSERT INTO conversations (session_id, user_ip, user_agent, start_time_utc)
+            OUTPUT INSERTED.conversation_id
+            VALUES (?, ?, ?, ?)
+            """
+            
+            result = self.db.execute_query(
+                query, 
+                (session_id, user_ip or '', user_agent or '', self.get_current_time_utc()),
+                fetch='one'
+            )
+            
+            if result:
+                self.current_conversation_id = result[0]
+                self.message_counter = 0
+                self.update_conversation_stage('awaiting_email')
+                return str(self.current_conversation_id)
+            
+        except Exception as e:
+            return None
+    
+    def save_message(self, role: str, content: str, message_type: str = None, metadata: dict = None):
+        """Save a single message"""
+        try:
+            if not self.current_conversation_id:
+                return False
+            
+            self.message_counter += 1
+            
+            query = """
+            INSERT INTO messages (conversation_id, role, content, message_order, message_type, metadata, timestamp_utc)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """
+            
+            metadata_json = json.dumps(metadata) if metadata else None
+            
+            result = self.db.execute_query(
+                query,
+                (
+                    self.current_conversation_id,
+                    role,
+                    content,
+                    self.message_counter,
+                    message_type,
+                    metadata_json,
+                    self.get_current_time_utc()
+                )
+            )
+            
+            self.update_conversation_stats()
+            return result and result > 0
+            
+        except Exception as e:
+            return False
+    
+    def update_conversation_stage(self, new_stage: str, stage_data: dict = None):
+        """Update conversation flow stage"""
+        try:
+            # Close previous stage
+            close_query = """
+            UPDATE conversation_flow 
+            SET exited_at_utc = ? 
+            WHERE conversation_id = ? AND exited_at_utc IS NULL
+            """
+            
+            self.db.execute_query(close_query, (self.get_current_time_utc(), self.current_conversation_id))
+            
+            # Add new stage
+            insert_query = """
+            INSERT INTO conversation_flow (conversation_id, stage, entered_at_utc, stage_data)
+            VALUES (?, ?, ?, ?)
+            """
+            
+            stage_data_json = json.dumps(stage_data) if stage_data else None
+            
+            result = self.db.execute_query(
+                insert_query,
+                (self.current_conversation_id, new_stage, self.get_current_time_utc(), stage_data_json)
+            )
+            
+            # Update conversation completion stage
+            update_conv_query = """
+            UPDATE conversations 
+            SET completion_stage = ?, updated_at = ?
+            WHERE conversation_id = ?
+            """
+            
+            self.db.execute_query(
+                update_conv_query,
+                (new_stage, self.get_current_time_utc(), self.current_conversation_id)
+            )
+            
+            return result and result > 0
+            
+        except Exception as e:
+            return False
+    
+    def update_user_email(self, email: str):
+        """Update user email for current conversation"""
+        try:
+            query = """
+            UPDATE conversations 
+            SET user_email = ?, updated_at = ?
+            WHERE conversation_id = ?
+            """
+            
+            result = self.db.execute_query(
+                query,
+                (email, self.get_current_time_utc(), self.current_conversation_id)
+            )
+            
+            return result and result > 0
+            
+        except Exception as e:
+            return False
+    
+    def end_conversation(self, end_reason: str = 'completed'):
+        """End the current conversation"""
+        try:
+            if not self.current_conversation_id:
+                return False
+            
+            # Close current stage
+            self.update_conversation_stage('ended', {'end_reason': end_reason})
+            
+            # Update conversation end time and completion status
+            query = """
+            UPDATE conversations 
+            SET end_time_utc = ?, 
+                end_reason = ?, 
+                is_completed = ?,
+                updated_at = ?
+            WHERE conversation_id = ?
+            """
+            
+            is_completed = 1 if end_reason == 'completed' else 0
+            
+            result = self.db.execute_query(
+                query,
+                (self.get_current_time_utc(), end_reason, is_completed, self.get_current_time_utc(), self.current_conversation_id)
+            )
+            
+            # Update daily stats
+            self.update_daily_stats()
+            
+            conversation_id = self.current_conversation_id
+            self.current_conversation_id = None
+            self.message_counter = 0
+            
+            return result and result > 0
+            
+        except Exception as e:
+            return False
+    
+    def update_conversation_stats(self):
+        """Update conversation message count"""
+        try:
+            query = """
+            UPDATE conversations 
+            SET total_messages = (
+                SELECT COUNT(*) FROM messages 
+                WHERE conversation_id = conversations.conversation_id
+            ),
+            updated_at = ?
+            WHERE conversation_id = ?
+            """
+            
+            self.db.execute_query(
+                query,
+                (self.get_current_time_utc(), self.current_conversation_id)
+            )
+            
+        except Exception as e:
+            pass
+    
+    def update_daily_stats(self):
+        """Update or create daily statistics"""
+        try:
+            # Simple daily stats update - you can enhance this
+            today = datetime.now(COMPANY_TIMEZONE).date()
+            
+            # Count today's conversations
+            count_query = """
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN is_completed = 1 THEN 1 ELSE 0 END) as completed
+            FROM conversations
+            WHERE CAST(start_time_utc AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time' AS DATE) = ?
+            """
+            
+            result = self.db.execute_query(count_query, (today,), fetch='one')
+            
+            if result:
+                total_conversations = result[0] or 0
+                completed_conversations = result[1] or 0
+                completion_rate = (completed_conversations / total_conversations * 100) if total_conversations > 0 else 0
+                
+                # Update or insert daily stats
+                upsert_query = """
+                MERGE daily_stats AS target
+                USING (SELECT ? as stat_date) AS source
+                ON target.stat_date = source.stat_date
+                WHEN MATCHED THEN
+                    UPDATE SET 
+                        total_conversations = ?,
+                        completed_conversations = ?,
+                        completion_rate = ?,
+                        updated_at = GETUTCDATE()
+                WHEN NOT MATCHED THEN
+                    INSERT (stat_date, total_conversations, completed_conversations, completion_rate, created_at)
+                    VALUES (?, ?, ?, ?, GETUTCDATE());
+                """
+                
+                self.db.execute_query(
+                    upsert_query,
+                    (today, total_conversations, completed_conversations, completion_rate,
+                     today, total_conversations, completed_conversations, completion_rate)
+                )
+            
+        except Exception as e:
+            pass
+
+# =============================================================================
+# DATABASE STATUS AND ANALYTICS
+# =============================================================================
+
+def check_database_status():
+    """Check if database connection is working"""
+    try:
+        db = SQLServerManager()
+        result = db.execute_query("SELECT @@VERSION", fetch='one')
+        if result:
+            return True, "Database connected successfully"
+        else:
+            return False, "Database query failed"
+    except Exception as e:
+        return False, f"Database connection error: {str(e)}"
+
+def get_conversation_stats():
+    """Get real-time conversation statistics"""
+    try:
+        db = SQLServerManager()
+        
+        # Today's stats in Singapore timezone
+        today = datetime.now(COMPANY_TIMEZONE).date()
+        query = """
+        SELECT 
+            COUNT(*) as total_today,
+            SUM(CASE WHEN is_completed = 1 THEN 1 ELSE 0 END) as completed_today,
+            COUNT(CASE WHEN start_time_utc >= DATEADD(HOUR, -1, GETUTCDATE()) THEN 1 END) as last_hour,
+            COUNT(CASE WHEN end_time_utc IS NULL THEN 1 END) as active_now
+        FROM conversations 
+        WHERE CAST(start_time_utc AT TIME ZONE 'UTC' AT TIME ZONE 'Singapore Standard Time' AS DATE) = ?
+        """
+        
+        result = db.execute_query(query, (today,), fetch='one')
+        
+        if result:
+            total_today = result[0] or 0
+            completed_today = result[1] or 0
+            return {
+                'total_today': total_today,
+                'completed_today': completed_today,
+                'last_hour': result[2] or 0,
+                'active_now': result[3] or 0,
+                'completion_rate': (completed_today / total_today * 100) if total_today > 0 else 0
+            }
+        
+        return {
+            'total_today': 0,
+            'completed_today': 0,
+            'last_hour': 0,
+            'active_now': 0,
+            'completion_rate': 0
+        }
+        
+    except Exception as e:
+        return None
+
+def send_test_daily_report():
+    """Send a test daily report (for testing purposes)"""
+    try:
+        if not ses_client:
+            return False, "SES not configured"
+        
+        # Get today's stats
+        stats = get_conversation_stats()
+        if not stats:
+            return False, "Could not get conversation stats"
+        
+        # Get sender email
+        sender_email = SES_FROM_EMAIL
+        if not sender_email:
+            try:
+                response = ses_client.list_verified_email_addresses()
+                verified_emails = response.get('VerifiedEmailAddresses', [])
+                if verified_emails:
+                    sender_email = verified_emails[0]
+                else:
+                    return False, "No verified email addresses"
+            except Exception as e:
+                return False, f"Could not get verified emails: {str(e)}"
+        
+        today = datetime.now(COMPANY_TIMEZONE).date().isoformat()
+        subject = f"AniSol Daily Report - {today} ({stats['total_today']} conversations)"
+        
+        # Create simple HTML email
+        html_body = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>AniSol Daily Report</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 26px;">🚢 AniSol Daily Report</h1>
+                <p style="color: #f0f0f0; margin: 8px 0 0 0; font-size: 16px;">{today}</p>
+            </div>
+            
+            <div style="background: #ffffff; padding: 25px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                
+                <!-- Executive Summary -->
+                <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+                    <h2 style="margin: 0 0 15px 0; color: #1565c0;">🎯 Executive Summary</h2>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 32px; font-weight: bold; color: #1976d2;">{stats['total_today']}</div>
+                            <div style="color: #666; font-size: 14px;">Total Conversations</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 32px; font-weight: bold; color: #388e3c;">{stats['completed_today']}</div>
+                            <div style="color: #666; font-size: 14px;">Completed ({stats['completion_rate']:.1f}%)</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 32px; font-weight: bold; color: #f57c00;">{stats['last_hour']}</div>
+                            <div style="color: #666; font-size: 14px;">Last Hour</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 32px; font-weight: bold; color: #7b1fa2;">{stats['active_now']}</div>
+                            <div style="color: #666; font-size: 14px;">Active Now</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: center; color: #666; font-size: 14px;">
+                    <p><strong>📧 AniSol AI Assistant Analytics</strong><br>
+                    Generated automatically • {datetime.now(COMPANY_TIMEZONE).strftime('%Y-%m-%d %H:%M')} SGT<br>
+                    <span style="font-size: 12px;">Privacy-focused reporting • Business insights only</span></p>
+                    
+                    <p style="margin: 15px 0 0 0; font-size: 13px;">
+                        📞 <strong>Contact:</strong> info@aniketsolutions.com | 
+                        🌐 <strong>Website:</strong> https://www.aniketsolutions.com
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Plain text version
+        text_body = f"""
+AniSol Daily Report - {today}
+
+EXECUTIVE SUMMARY:
+• {stats['total_today']} Total Conversations
+• {stats['completed_today']} Completed ({stats['completion_rate']:.1f}% rate)
+• {stats['last_hour']} conversations in the last hour
+• {stats['active_now']} active conversations
+
+Generated automatically by AniSol AI Assistant Analytics
+        """
+        
+        # Send email
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [NOTIFICATION_EMAIL]},
+            Message={
+                'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                'Body': {
+                    'Html': {'Data': html_body, 'Charset': 'UTF-8'},
+                    'Text': {'Data': text_body, 'Charset': 'UTF-8'}
+                }
+            }
+        )
+        
+        return True, f"Test report sent successfully! Message ID: {response['MessageId']}"
+        
+    except Exception as e:
+        return False, f"Error sending test report: {str(e)}"
+
+# =============================================================================
+# ENHANCED SERVER-SIDE KEEP-ALIVE (UNCHANGED)
 # =============================================================================
 
 def add_server_side_keepalive():
@@ -102,7 +591,7 @@ def add_server_side_keepalive():
     st.session_state.last_server_ping = current_time
 
 # =============================================================================
-# CONVERSATION INACTIVITY AND ENDING LOGIC
+# CONVERSATION INACTIVITY AND ENDING LOGIC (UNCHANGED)
 # =============================================================================
 
 def check_auto_reset():
@@ -115,6 +604,10 @@ def check_auto_reset():
         
         # Auto-reset after 10 seconds of showing the closure message
         if time_since_reset_trigger > 10:
+            # End conversation in database before reset
+            if "conversation_storage" in st.session_state:
+                st.session_state.conversation_storage.end_conversation('auto_reset')
+            
             # Clear ALL session state for complete reset
             keys_to_keep = []  # Don't keep anything - complete fresh start
             
@@ -187,6 +680,10 @@ def check_conversation_inactivity():
             # Add simple closing message
             add_message_to_chat("assistant", 
                 "Thank you very much! This conversation has ended.")
+            
+            # End conversation in database
+            if "conversation_storage" in st.session_state:
+                st.session_state.conversation_storage.end_conversation('inactivity')
             
             # AUTOMATIC RESET: Clear all session state and restart after 10 seconds
             st.session_state.auto_reset_triggered = True
@@ -271,7 +768,111 @@ def add_inactivity_javascript():
     st.markdown(js_code, unsafe_allow_html=True)
 
 # =============================================================================
-# ADVANCED KEEP-ALIVE SYSTEM TO PREVENT STREAMLIT SLEEPING
+# GLOBAL CONVERSATION STORAGE INSTANCE
+# =============================================================================
+
+def initialize_conversation_storage():
+    """Initialize conversation storage for current session"""
+    try:
+        if "conversation_storage" not in st.session_state:
+            st.session_state.conversation_storage = ConversationStorage()
+        
+        if "conversation_storage_initialized" not in st.session_state:
+            # Start new conversation if not exists
+            if not st.session_state.conversation_storage.current_conversation_id:
+                session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(1000, 9999)}"
+                conversation_id = st.session_state.conversation_storage.start_new_conversation(session_id)
+                
+                if conversation_id:
+                    st.session_state.conversation_storage_initialized = True
+                    st.session_state.current_conversation_id = conversation_id
+                    return True
+        
+        return True
+        
+    except Exception as e:
+        return False
+
+# =============================================================================
+# ENHANCED MESSAGE HANDLING WITH DATABASE INTEGRATION
+# =============================================================================
+
+def add_message_to_chat(role, content, timestamp=None):
+    """Enhanced function that saves to both session state and database"""
+    if timestamp is None:
+        timestamp = datetime.now(COMPANY_TIMEZONE).strftime("%H:%M")
+    
+    # Save to session state (existing functionality)
+    st.session_state.messages.append({
+        "role": role,
+        "content": content,
+        "timestamp": timestamp
+    })
+    
+    # Save to database with message type classification
+    message_type = classify_message_type(role, content)
+    
+    # Save to database
+    if "conversation_storage" in st.session_state:
+        st.session_state.conversation_storage.save_message(role, content, message_type)
+
+def classify_message_type(role: str, content: str) -> str:
+    """Classify message type for analytics"""
+    if role == "assistant":
+        if "Hi! I'm Alex" in content:
+            return "greeting"
+        elif "corporate email" in content:
+            return "email_request"
+        elif "Email validated" in content:
+            return "email_validation"
+        elif "verification code" in content:
+            return "otp_request"
+        elif "Email verified" in content:
+            return "otp_verified"
+        elif "anything else" in content:
+            return "final_question"
+        elif "conversation has ended" in content:
+            return "goodbye"
+        elif "AniSol" in content and ("TMS" in content or "Procurement" in content or "Inventory" in content):
+            return "product_info"
+        elif "Technology Services" in content or "Custom Development" in content:
+            return "service_info"
+        else:
+            return "response"
+    elif role == "user":
+        if "@" in content:
+            return "email_response"
+        elif "verification code" in content or content.isdigit():
+            return "otp_response"
+        elif "maritime products" in content.lower():
+            return "category_selection"
+        elif "technology services" in content.lower():
+            return "category_selection"
+        else:
+            return "user_query"
+    
+    return "unknown"
+
+def update_conversation_stage_db(stage: str, data: dict = None):
+    """Update conversation stage in database"""
+    try:
+        if "conversation_storage" in st.session_state:
+            return st.session_state.conversation_storage.update_conversation_stage(stage, data)
+        return False
+    except Exception as e:
+        return False
+
+def update_user_email_db(email: str):
+    """Update user email in database"""
+    try:
+        if "conversation_storage" in st.session_state:
+            return st.session_state.conversation_storage.update_user_email(email)
+        return False
+    except Exception as e:
+        return False
+
+# =============================================================================
+# KEEP-ALIVE SYSTEMS (UNCHANGED)
 # =============================================================================
 
 def keep_alive_system():
@@ -482,11 +1083,11 @@ def add_service_worker():
     """
     st.markdown(sw_code, unsafe_allow_html=True)
 
-# Avatar Configuration
+# Avatar Configuration (UNCHANGED)
 ALEX_AVATAR_URL = "https://raw.githubusercontent.com/AShirsat96/WebsiteChatbot/main/Alex_AI_Avatar.png"
 USER_AVATAR_URL = "https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=4f46e5&fontSize=40"
 
-# Alternative avatar options
+# Alternative avatar options (UNCHANGED)
 ALTERNATIVE_AVATARS = {
     "professional": "https://api.dicebear.com/7.x/avataaars/svg?seed=Professional&backgroundColor=e0e7ff&clothesColor=3730a3&eyebrowType=default&eyeType=default&facialHairType=default&hairColor=brown&mouthType=smile&skinColor=light&topType=shortHairShortFlat",
     "friendly": "https://api.dicebear.com/7.x/avataaars/svg?seed=Friendly&backgroundColor=dcfce7&clothesColor=166534&eyebrowType=default&eyeType=happy&facialHairType=default&hairColor=black&mouthType=smile&skinColor=light&topType=shortHairDreads01",
@@ -517,7 +1118,7 @@ Services and Expertise:
 """
 
 # =============================================================================
-# COMPREHENSIVE KEYWORD MAPPING FOR PRODUCTS AND SERVICES
+# COMPREHENSIVE KEYWORD MAPPING FOR PRODUCTS AND SERVICES (UNCHANGED)
 # =============================================================================
 
 INVENTORY_KEYWORDS = [
@@ -724,7 +1325,7 @@ COMPREHENSIVE_KEYWORD_MAPPING = {
 }
 
 # =============================================================================
-# ENHANCED KEYWORD MATCHING FUNCTION
+# ENHANCED KEYWORD MATCHING FUNCTION (UNCHANGED)
 # =============================================================================
 
 def get_best_match_category(query):
@@ -777,7 +1378,7 @@ def get_best_match_category(query):
     return best_category, best_match['confidence'], best_match['matched_keywords']
 
 # =============================================================================
-# ENHANCED PRODUCT AND SERVICE RESPONSE FUNCTIONS
+# ENHANCED PRODUCT AND SERVICE RESPONSE FUNCTIONS (UNCHANGED)
 # =============================================================================
 
 def get_product_response_enhanced(query):
@@ -1031,7 +1632,7 @@ IMPORTANT INSTRUCTIONS:
         return "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
 
 # =============================================================================
-# EMAIL VALIDATION AND OTP FUNCTIONS
+# EMAIL VALIDATION AND OTP FUNCTIONS (UNCHANGED)
 # =============================================================================
 
 def generate_otp():
@@ -1469,6 +2070,14 @@ add_service_worker()
 add_inactivity_javascript()
 add_server_side_keepalive()  # NEW: Server-side heartbeat
 
+# Configure the page
+st.set_page_config(
+    page_title="Aniket Solutions - AI Assistant",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 # Custom CSS for better styling and hide sidebar completely
 st.markdown("""
 <style>
@@ -1592,22 +2201,15 @@ def add_initial_greeting():
         "timestamp": timestamp
     })
 
-def add_message_to_chat(role, content, timestamp=None):
-    """Helper function to add messages to chat"""
-    if timestamp is None:
-        timestamp = datetime.now().strftime("%H:%M")
-    
-    st.session_state.messages.append({
-        "role": role,
-        "content": content,
-        "timestamp": timestamp
-    })
-
 def handle_email_validation_flow(email, validation_result):
     """Handle the flow after email validation"""
     if validation_result['is_valid']:
         validation_response = "✅ Email validated successfully."
         add_message_to_chat("assistant", validation_response)
+        
+        # Update conversation stage and email in database
+        update_conversation_stage_db('email_validated', {'email': email})
+        update_user_email_db(email)
         
         otp = generate_otp()
         success, message = send_otp_email(email, otp)
@@ -1623,6 +2225,9 @@ def handle_email_validation_flow(email, validation_result):
             st.session_state.conversation_flow["email_validated"] = True
             st.session_state.conversation_flow["awaiting_email"] = False
             st.session_state.conversation_flow["awaiting_otp"] = True
+            
+            # Update conversation stage
+            update_conversation_stage_db('awaiting_otp', {'email': email, 'otp_sent': True})
             
             add_message_to_chat("assistant", 
                 f"I've sent a 6-digit code to {email}. Please enter it below to continue. Code expires in 10 minutes."
@@ -1675,6 +2280,9 @@ if "conversation_flow" not in st.session_state:
 if "otp_data" not in st.session_state:
     st.session_state.otp_data = None
 
+# Initialize database storage
+initialize_conversation_storage()
+
 # Check for auto-reset first (before anything else)
 check_auto_reset()
 
@@ -1707,6 +2315,10 @@ if conversation_ended:
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔄 Restart Now", use_container_width=True):
+            # End conversation in database before reset
+            if "conversation_storage" in st.session_state:
+                st.session_state.conversation_storage.end_conversation('manual_restart')
+            
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.rerun()
@@ -1723,6 +2335,29 @@ if conversation_ended:
 with st.sidebar:
     st.header("⚙️ Configuration")
     
+    # Database Status
+    st.subheader("🗄️ Database Status")
+    try:
+        db_status, db_message = check_database_status()
+        if db_status:
+            st.success(f"✅ {db_message}")
+            
+            # Show conversation stats
+            stats = get_conversation_stats()
+            if stats:
+                st.metric("Today's Conversations", stats['total_today'], delta=stats['last_hour'], delta_color="normal", help="Total conversations today (delta: last hour)")
+                st.metric("Completion Rate", f"{stats['completion_rate']:.1f}%", delta=None)
+                if stats['active_now'] > 0:
+                    st.info(f"🟢 {stats['active_now']} active conversation(s)")
+        else:
+            st.error(f"❌ {db_message}")
+            st.warning("Conversations will not be saved to database")
+    except Exception as e:
+        st.error(f"❌ Database error: {str(e)}")
+    
+    st.divider()
+    
+    # OpenAI Configuration
     if not OPENAI_API_KEY:
         api_key = st.text_input(
             "OpenAI API Key",
@@ -1745,6 +2380,10 @@ with st.sidebar:
     col1, col2 = st.columns([1, 1])
     with col1:
         if st.button("🔄 Reset Session", use_container_width=True):
+            # End conversation in database before reset
+            if "conversation_storage" in st.session_state:
+                st.session_state.conversation_storage.end_conversation('manual_reset')
+            
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
             st.success("Session reset!")
@@ -1769,8 +2408,27 @@ with st.sidebar:
             st.session_state.waiting_for_final_response = False
             st.session_state.conversation_ended = False
             st.session_state.inactivity_timer_start = None
+            
+            # Start new conversation in database
+            initialize_conversation_storage()
+            
             add_initial_greeting()
             st.rerun()
+    
+    st.divider()
+    
+    # Analytics and Reports
+    st.subheader("📊 Analytics & Reports")
+    
+    if st.button("📧 Send Test Report", use_container_width=True):
+        with st.spinner("Sending test report..."):
+            success, message = send_test_daily_report()
+            if success:
+                st.success(f"✅ {message}")
+            else:
+                st.error(f"❌ {message}")
+    
+    st.caption("Sends a daily summary report to the configured notification email")
     
     st.divider()
     
@@ -1845,6 +2503,7 @@ with st.sidebar:
     
     st.divider()
     
+    # AWS SES Status
     if not (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY):
         st.warning("⚠️ AWS SES not configured. Please add AWS credentials to .env file.")
     else:
@@ -1969,6 +2628,9 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                         st.session_state.conversation_flow["otp_verified"] = True
                         st.session_state.conversation_flow["awaiting_selection"] = True
                         
+                        # Update conversation stage in database
+                        update_conversation_stage_db('otp_verified', {'email': st.session_state.otp_data['email']})
+                        
                         st.rerun()
                     else:
                         st.session_state.otp_data["attempts"] = st.session_state.otp_data.get("attempts", 0) + 1
@@ -1980,6 +2642,9 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                             st.session_state.otp_data = None
                             st.session_state.conversation_flow["awaiting_otp"] = False
                             st.session_state.conversation_flow["awaiting_email"] = True
+                            
+                            # Update conversation stage in database
+                            update_conversation_stage_db('awaiting_email', {'reason': 'otp_failed'})
                         
                         st.rerun()
                 else:
@@ -2022,6 +2687,9 @@ elif st.session_state.conversation_flow["awaiting_selection"]:
             st.session_state.conversation_flow["selected_category"] = "products"
             st.session_state.conversation_flow["awaiting_selection"] = False
             
+            # Update conversation stage in database
+            update_conversation_stage_db('category_selected', {'category': 'maritime_products'})
+            
             products_overview = """Our AniSol Maritime Software Suite provides integrated operational management for complex fleet requirements and regulatory compliance.
 
 **Product Portfolio:**
@@ -2059,6 +2727,9 @@ Which specific operational area requires detailed analysis?"""
             
             st.session_state.conversation_flow["selected_category"] = "services"
             st.session_state.conversation_flow["awaiting_selection"] = False
+            
+            # Update conversation stage in database
+            update_conversation_stage_db('category_selected', {'category': 'technology_services'})
             
             services_overview = """Our Technology Services address comprehensive business modernization requirements through specialized expertise and proven implementation methodologies.
 
@@ -2140,7 +2811,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; font-size: 0.8rem;'>"
-    "Powered by Aniket Solutions • Enterprise AI Assistant"
+    "Powered by Aniket Solutions • Enterprise AI Assistant with SQL Analytics"
     "</div>",
     unsafe_allow_html=True
 )
