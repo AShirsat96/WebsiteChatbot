@@ -42,7 +42,7 @@ SQL_PASSWORD = os.getenv("SQL_PASSWORD", "")  # Leave empty for Windows Authenti
 SQL_DRIVER = os.getenv("SQL_DRIVER", "ODBC Driver 17 for SQL Server")
 
 # Email Report Configuration
-NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "admin@aniketsolutions.com")
+NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL", "as@aniketsolutions.com.sg")
 EMAIL_INCLUDE_PERSONAL_DATA = os.getenv("EMAIL_INCLUDE_PERSONAL_DATA", "false").lower() == "true"
 
 # Timezone Configuration
@@ -2058,19 +2058,7 @@ def comprehensive_email_validation(email):
     
     return results
 
-# =============================================================================
-# ACTIVATE ALL KEEP-ALIVE SYSTEMS AND INACTIVITY MONITORING
-# =============================================================================
-
-# Run ALL keep-alive systems with enhanced timing
-keep_alive_system()
-add_javascript_keepalive()
-add_auto_refresh()
-add_service_worker()
-add_inactivity_javascript()
-add_server_side_keepalive()  # NEW: Server-side heartbeat
-
-# Configure the page
+# Configure the page FIRST
 st.set_page_config(
     page_title="Aniket Solutions - AI Assistant",
     page_icon="🤖",
@@ -2247,7 +2235,7 @@ Please provide a valid corporate email address."""
         add_message_to_chat("assistant", validation_response)
         return False
 
-# Initialize session state
+# Initialize session state FIRST
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -2279,6 +2267,18 @@ if "conversation_flow" not in st.session_state:
 
 if "otp_data" not in st.session_state:
     st.session_state.otp_data = None
+
+# =============================================================================
+# ACTIVATE ALL KEEP-ALIVE SYSTEMS AND INACTIVITY MONITORING
+# =============================================================================
+
+# Now run keep-alive systems AFTER session state is initialized
+keep_alive_system()
+add_javascript_keepalive()
+add_auto_refresh()
+add_service_worker()
+add_inactivity_javascript()
+add_server_side_keepalive()
 
 # Initialize database storage
 initialize_conversation_storage()
