@@ -4,7 +4,7 @@ python-dotenv
 boto3
 dnspython
 requests
-pyodbc
 pytz
 pandas
 beautifulsoup4
+
