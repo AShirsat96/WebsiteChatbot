@@ -693,10 +693,10 @@ def comprehensive_email_validation(email):
 # =============================================================================
 
 def generate_smart_response(user_message):
-    """Generate smart response using OpenAI"""
+    """Generate smart response using OpenAI with conversation history."""
     try:
         if st.session_state.get("openai_client"):
-            full_context = f"""
+            system_prompt = """
 You are Alex, a senior technology consultant at Aniket Solutions. Provide professional responses about our maritime software products and technology services.
 
 AVAILABLE MARITIME PRODUCTS:
@@ -715,22 +715,37 @@ AVAILABLE TECHNOLOGY SERVICES:
 - AI Chatbots & Virtual Assistants: Conversational AI for customer service
 
 IMPORTANT INSTRUCTIONS:
-- Always respond based on what the user is asking about
-- If they ask about products, provide detailed product information
-- If they ask about services, provide detailed service information
-- Use specific technical details and business benefits
-- Always include contact info@aniketsolutions.com for detailed consultation
-- Respond professionally without conversational AI language
+- Always respond based on the full conversation context.
+- If they ask about products, provide detailed product information.
+- If they ask about services, provide detailed service information.
+- Use specific technical details and business benefits.
+- Always include contact info@aniketsolutions.com for detailed consultation.
+- Respond professionally without conversational AI language.
 """
             
-            messages = [
-                {"role": "system", "content": full_context},
-                {"role": "user", "content": user_message}
+            # --- START OF CHANGES ---
+
+            # 1. Create the base message list with the system prompt
+            messages_to_send = [{"role": "system", "content": system_prompt}]
+
+            # 2. Get the last 6 messages from session state to provide context
+            #    We re-format them to ensure they only have 'role' and 'content' keys
+            recent_history = [
+                {"role": msg["role"], "content": msg["content"]} 
+                for msg in st.session_state.messages[-6:]
             ]
+            
+            # 3. Add the recent history to our list
+            messages_to_send.extend(recent_history)
+            
+            # Note: The user's latest message is already in st.session_state.messages,
+            # so we don't need to add it separately.
+
+            # --- END OF CHANGES ---
             
             response = st.session_state.openai_client.chat.completions.create(
                 model="gpt-4",
-                messages=messages,
+                messages=messages_to_send, # Use the new list with history
                 temperature=0.2,
                 max_tokens=600,
                 presence_penalty=0.0,
@@ -742,6 +757,8 @@ IMPORTANT INSTRUCTIONS:
         return "For information about our maritime software products and technology services, contact our specialists at info@aniketsolutions.com for detailed consultation."
         
     except Exception as e:
+        # It's good practice to log the actual error for debugging
+        print(f"Error in generate_smart_response: {e}")
         return "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
 
 # =============================================================================
@@ -1364,3 +1381,4 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
+
