@@ -19,6 +19,8 @@ import uuid
 import pytz
 from typing import Optional, Dict, List, Any
 import pandas as pd
+import threading
+import concurrent.futures
 
 # Load environment variables from .env file
 load_dotenv()
@@ -66,367 +68,243 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
     )
 
 # =============================================================================
-# S3 STORAGE MANAGER
+# SIMPLIFIED S3 STORAGE FUNCTION
 # =============================================================================
 
-class S3StorageManager:
-    def __init__(self):
-        self.bucket_name = S3_BUCKET_NAME
-        self.s3_client = s3_client
-        self.bucket_exists = False
+def save_conversation_to_s3(conversation_data):
+    """Simple function to save conversation transcript to S3"""
+    try:
+        if not s3_client:
+            print("S3 client not configured")
+            return False
         
-    def ensure_bucket_exists(self):
-        """Ensure S3 bucket exists, create if it doesn't"""
+        # Ensure bucket exists
+        bucket_name = S3_BUCKET_NAME
         try:
-            if not self.s3_client:
-                return False
-            
-            # Check if bucket exists
-            try:
-                self.s3_client.head_bucket(Bucket=self.bucket_name)
-                self.bucket_exists = True
-                return True
-            except ClientError as e:
-                error_code = int(e.response['Error']['Code'])
-                if error_code == 404:
-                    # Bucket doesn't exist, create it
-                    try:
-                        if AWS_REGION == 'us-east-1':
-                            self.s3_client.create_bucket(Bucket=self.bucket_name)
-                        else:
-                            self.s3_client.create_bucket(
-                                Bucket=self.bucket_name,
-                                CreateBucketConfiguration={'LocationConstraint': AWS_REGION}
-                            )
-                        
-                        self.bucket_exists = True
-                        return True
-                    except Exception as create_error:
-                        return False
-                else:
-                    return False
-            
-        except Exception as e:
-            return False
-    
-    def save_json(self, key: str, data: dict):
-        """Save JSON data to S3"""
-        try:
-            if not self.s3_client or not self.bucket_exists:
-                if not self.ensure_bucket_exists():
-                    return False
-            
-            json_data = json.dumps(data, default=str, indent=2)
-            
-            self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=json_data,
-                ContentType='application/json',
-                ServerSideEncryption='AES256'
-            )
-            
-            return True
-            
-        except Exception as e:
-            return False
-
-# =============================================================================
-# CONVERSATION STORAGE AND EMAIL MANAGER
-# =============================================================================
-
-class ConversationManager:
-    def __init__(self):
-        self.s3_manager = S3StorageManager()
-        self.current_conversation_id = None
-        self.conversation_data = {}
-        self.messages = []
-    
-    def get_current_time_utc(self):
-        """Get current time in UTC"""
-        return datetime.now(UTC)
-    
-    def get_singapore_time(self):
-        """Get current time in Singapore timezone"""
-        return datetime.now(COMPANY_TIMEZONE)
-    
-    def start_new_conversation(self, session_id: str):
-        """Start a new conversation record"""
-        try:
-            self.current_conversation_id = str(uuid.uuid4())
-            current_time = self.get_current_time_utc()
-            
-            self.conversation_data = {
-                'conversation_id': self.current_conversation_id,
-                'session_id': session_id,
-                'start_time_utc': current_time.isoformat(),
-                'start_time_singapore': self.get_singapore_time().isoformat(),
-                'user_email': None,
-                'end_time_utc': None,
-                'is_completed': False,
-                'messages': [],
-                'created_at': current_time.isoformat()
-            }
-            
-            self.messages = []
-            return self.current_conversation_id
-            
-        except Exception as e:
-            return None
-    
-    def add_message(self, role: str, content: str):
-        """Add a message to the current conversation"""
-        try:
-            if not self.current_conversation_id:
-                return False
-            
-            current_time = self.get_current_time_utc()
-            
-            message = {
-                'role': role,
-                'content': content,
-                'timestamp_utc': current_time.isoformat(),
-                'timestamp_singapore': self.get_singapore_time().isoformat()
-            }
-            
-            self.messages.append(message)
-            self.conversation_data['messages'] = self.messages
-            
-            return True
-            
-        except Exception as e:
-            return False
-    
-    def update_user_email(self, email: str):
-        """Update user email for current conversation"""
-        try:
-            if self.conversation_data:
-                self.conversation_data['user_email'] = email
-                return True
-            return False
-        except Exception as e:
-            return False
-    
-    def complete_conversation(self):
-        """Complete the conversation: save to S3 and send email"""
-        try:
-            if not self.current_conversation_id or not self.conversation_data:
-                return False
-            
-            current_time = self.get_current_time_utc()
-            
-            # Mark conversation as completed
-            self.conversation_data.update({
-                'end_time_utc': current_time.isoformat(),
-                'end_time_singapore': self.get_singapore_time().isoformat(),
-                'is_completed': True,
-                'total_messages': len(self.messages)
-            })
-            
-            # Save to S3
-            date_str = current_time.strftime('%Y/%m/%d')
-            s3_key = f"conversations/{date_str}/{self.current_conversation_id}.json"
-            s3_saved = self.s3_manager.save_json(s3_key, self.conversation_data)
-            
-            if s3_saved:
-                # Send email with entire conversation
-                email_sent = self.send_conversation_email()
-                
-                # Clear current conversation
-                conversation_id = self.current_conversation_id
-                self.current_conversation_id = None
-                self.conversation_data = {}
-                self.messages = []
-                
-                return email_sent
-            
-            return False
-            
-        except Exception as e:
-            return False
-    
-    def send_conversation_email(self):
-        """Send email with the complete conversation"""
-        try:
-            if not ses_client or not self.conversation_data:
-                return False
-            
-            # Get sender email
-            sender_email = SES_FROM_EMAIL
-            if not sender_email:
+            s3_client.head_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            error_code = int(e.response['Error']['Code'])
+            if error_code == 404:
+                # Create bucket if it doesn't exist
                 try:
-                    response = ses_client.list_verified_email_addresses()
-                    verified_emails = response.get('VerifiedEmailAddresses', [])
-                    if verified_emails:
-                        sender_email = verified_emails[0]
+                    if AWS_REGION == 'us-east-1':
+                        s3_client.create_bucket(Bucket=bucket_name)
                     else:
-                        return False
-                except Exception as e:
+                        s3_client.create_bucket(
+                            Bucket=bucket_name,
+                            CreateBucketConfiguration={'LocationConstraint': AWS_REGION}
+                        )
+                except Exception as create_error:
+                    print(f"Failed to create bucket: {create_error}")
                     return False
-            
-            # Create email subject
-            user_email = self.conversation_data.get('user_email', 'Unknown')
-            start_time = datetime.fromisoformat(self.conversation_data['start_time_singapore'].replace('Z', ''))
-            subject = f"AniSol Conversation - {user_email} - {start_time.strftime('%Y-%m-%d %H:%M')}"
-            
-            # Create conversation summary
-            total_messages = len(self.messages)
-            duration = self.calculate_conversation_duration()
-            
-            # Create HTML email with full conversation
-            html_body = self.create_conversation_email_html(subject, duration, total_messages)
-            text_body = self.create_conversation_email_text(subject, duration, total_messages)
-            
-            # Send email
-            response = ses_client.send_email(
-                Source=sender_email,
-                Destination={'ToAddresses': [NOTIFICATION_EMAIL]},
-                Message={
-                    'Subject': {'Data': subject, 'Charset': 'UTF-8'},
-                    'Body': {
-                        'Html': {'Data': html_body, 'Charset': 'UTF-8'},
-                        'Text': {'Data': text_body, 'Charset': 'UTF-8'}
-                    }
-                }
-            )
-            
-            return True
-            
-        except Exception as e:
+        
+        # Create S3 key with date structure
+        current_time = datetime.now(UTC)
+        date_str = current_time.strftime('%Y/%m/%d')
+        conversation_id = conversation_data.get('conversation_id', str(uuid.uuid4()))
+        s3_key = f"conversations/{date_str}/{conversation_id}.json"
+        
+        # Convert conversation data to JSON
+        json_data = json.dumps(conversation_data, default=str, indent=2)
+        
+        # Upload to S3
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=s3_key,
+            Body=json_data,
+            ContentType='application/json',
+            ServerSideEncryption='AES256'
+        )
+        
+        print(f"Conversation saved to S3: {s3_key}")
+        return True
+        
+    except Exception as e:
+        print(f"Error saving to S3: {e}")
+        return False
+
+# =============================================================================
+# SIMPLIFIED EMAIL FUNCTION
+# =============================================================================
+
+def email_conversation_transcript(conversation_data):
+    """Simple function to email conversation transcript"""
+    try:
+        if not ses_client:
+            print("SES client not configured")
             return False
-    
-    def calculate_conversation_duration(self):
-        """Calculate conversation duration"""
+        
+        # Get sender email
+        sender_email = SES_FROM_EMAIL
+        if not sender_email:
+            try:
+                response = ses_client.list_verified_email_addresses()
+                verified_emails = response.get('VerifiedEmailAddresses', [])
+                if verified_emails:
+                    sender_email = verified_emails[0]
+                else:
+                    print("No verified email addresses found")
+                    return False
+            except Exception as e:
+                print(f"Error getting verified emails: {e}")
+                return False
+        
+        # Extract conversation details
+        user_email = conversation_data.get('user_email', 'Unknown')
+        start_time = conversation_data.get('start_time_singapore', 'Unknown')
+        messages = conversation_data.get('messages', [])
+        conversation_id = conversation_data.get('conversation_id', 'Unknown')
+        
+        # Calculate duration
         try:
-            start_time = datetime.fromisoformat(self.conversation_data['start_time_utc'].replace('Z', ''))
-            end_time = datetime.fromisoformat(self.conversation_data['end_time_utc'].replace('Z', ''))
-            duration = end_time - start_time
-            
-            total_seconds = int(duration.total_seconds())
-            minutes = total_seconds // 60
-            seconds = total_seconds % 60
-            
-            if minutes > 0:
-                return f"{minutes}m {seconds}s"
-            else:
-                return f"{seconds}s"
+            start_dt = datetime.fromisoformat(conversation_data.get('start_time_utc', '').replace('Z', ''))
+            end_dt = datetime.fromisoformat(conversation_data.get('end_time_utc', '').replace('Z', ''))
+            duration_seconds = int((end_dt - start_dt).total_seconds())
+            duration = f"{duration_seconds // 60}m {duration_seconds % 60}s" if duration_seconds >= 60 else f"{duration_seconds}s"
         except:
-            return "Unknown"
+            duration = "Unknown"
+        
+        # Create email subject
+        subject = f"AniSol Conversation - {user_email} - {start_time.split('T')[0] if 'T' in start_time else start_time}"
+        
+        # Create HTML email body
+        html_body = create_html_email(user_email, start_time, duration, len(messages), conversation_id, messages)
+        
+        # Create plain text email body
+        text_body = create_text_email(user_email, start_time, duration, len(messages), conversation_id, messages)
+        
+        # Send email
+        response = ses_client.send_email(
+            Source=sender_email,
+            Destination={'ToAddresses': [NOTIFICATION_EMAIL]},
+            Message={
+                'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                'Body': {
+                    'Html': {'Data': html_body, 'Charset': 'UTF-8'},
+                    'Text': {'Data': text_body, 'Charset': 'UTF-8'}
+                }
+            }
+        )
+        
+        print(f"Email sent successfully to {NOTIFICATION_EMAIL}")
+        return True
+        
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
+
+def create_html_email(user_email, start_time, duration, total_messages, conversation_id, messages):
+    """Create HTML email body"""
     
-    def create_conversation_email_html(self, subject, duration, total_messages):
-        """Create HTML email with full conversation"""
-        user_email = self.conversation_data.get('user_email', 'Unknown')
-        start_time = self.conversation_data.get('start_time_singapore', '')
-        conversation_id = self.conversation_data.get('conversation_id', '')
+    # Create messages HTML
+    messages_html = ""
+    for msg in messages:
+        role_display = "🤖 Alex (Assistant)" if msg['role'] == 'assistant' else "👤 User"
+        timestamp = msg.get('timestamp_singapore', 'Unknown')
+        if 'T' in timestamp:
+            timestamp = datetime.fromisoformat(timestamp.replace('Z', '')).strftime('%H:%M:%S')
         
-        # Create messages HTML
-        messages_html = ""
-        for i, msg in enumerate(self.messages, 1):
-            role_display = "🤖 Alex (Assistant)" if msg['role'] == 'assistant' else "👤 User"
-            timestamp = datetime.fromisoformat(msg['timestamp_singapore'].replace('Z', '')).strftime('%H:%M:%S')
-            
-            # Style based on role
-            if msg['role'] == 'assistant':
-                style = "background: #f0f8ff; border-left: 4px solid #4285f4; margin: 10px 0; padding: 15px; border-radius: 8px;"
-            else:
-                style = "background: #f8f9fa; border-left: 4px solid #28a745; margin: 10px 0; padding: 15px; border-radius: 8px;"
-            
-            messages_html += f"""
-            <div style="{style}">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <strong style="color: #333;">{role_display}</strong>
-                    <small style="color: #666;">{timestamp}</small>
-                </div>
-                <div style="line-height: 1.5; color: #444;">
-                    {msg['content'].replace('\n', '<br>')}
-                </div>
-            </div>
-            """
+        # Style based on role
+        if msg['role'] == 'assistant':
+            style = "background: #f0f8ff; border-left: 4px solid #4285f4; margin: 10px 0; padding: 15px; border-radius: 8px;"
+        else:
+            style = "background: #f8f9fa; border-left: 4px solid #28a745; margin: 10px 0; padding: 15px; border-radius: 8px;"
         
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>AniSol Conversation Report</title>
-        </head>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
-                <h1 style="color: white; margin: 0; font-size: 24px;">🚢 AniSol Conversation Report</h1>
-                <p style="color: #f0f0f0; margin: 8px 0 0 0; font-size: 14px;">Complete Conversation Record</p>
+        messages_html += f"""
+        <div style="{style}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong style="color: #333;">{role_display}</strong>
+                <small style="color: #666;">{timestamp}</small>
             </div>
-            
-            <div style="background: #ffffff; padding: 25px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                
-                <!-- Conversation Summary -->
-                <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
-                    <h2 style="margin: 0 0 15px 0; color: #1565c0;">📋 Conversation Summary</h2>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                        <div>
-                            <strong>User Email:</strong><br>
-                            <span style="color: #666;">{user_email}</span>
-                        </div>
-                        <div>
-                            <strong>Start Time:</strong><br>
-                            <span style="color: #666;">{start_time}</span>
-                        </div>
-                        <div>
-                            <strong>Duration:</strong><br>
-                            <span style="color: #666;">{duration}</span>
-                        </div>
-                        <div>
-                            <strong>Messages:</strong><br>
-                            <span style="color: #666;">{total_messages}</span>
-                        </div>
-                    </div>
-                    <div style="margin-top: 15px;">
-                        <strong>Conversation ID:</strong><br>
-                        <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 12px;">{conversation_id}</code>
-                    </div>
-                </div>
-
-                <!-- Full Conversation -->
-                <div style="margin-bottom: 25px;">
-                    <h2 style="margin: 0 0 20px 0; color: #333;">💬 Complete Conversation</h2>
-                    {messages_html}
-                </div>
-
-                <!-- Footer -->
-                <div style="text-align: center; color: #666; font-size: 14px; border-top: 1px solid #eee; padding-top: 20px;">
-                    <p><strong>📧 AniSol AI Assistant</strong><br>
-                    Conversation automatically saved to S3 and emailed<br>
-                    <span style="font-size: 12px;">Generated: {datetime.now(COMPANY_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')} SGT</span></p>
-                    
-                    <p style="margin: 15px 0 0 0; font-size: 13px;">
-                        📞 <strong>Contact:</strong> info@aniketsolutions.com | 
-                        🌐 <strong>Website:</strong> https://www.aniketsolutions.com
-                    </p>
-                </div>
+            <div style="line-height: 1.5; color: #444;">
+                {msg['content'].replace('\n', '<br>')}
             </div>
-        </body>
-        </html>
+        </div>
         """
     
-    def create_conversation_email_text(self, subject, duration, total_messages):
-        """Create plain text email with full conversation"""
-        user_email = self.conversation_data.get('user_email', 'Unknown')
-        start_time = self.conversation_data.get('start_time_singapore', '')
-        conversation_id = self.conversation_data.get('conversation_id', '')
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>AniSol Conversation Report</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">🚢 AniSol Conversation Report</h1>
+            <p style="color: #f0f0f0; margin: 8px 0 0 0; font-size: 14px;">Complete Conversation Transcript</p>
+        </div>
         
-        # Create messages text
-        messages_text = ""
-        for i, msg in enumerate(self.messages, 1):
-            role_display = "Alex (Assistant)" if msg['role'] == 'assistant' else "User"
-            timestamp = datetime.fromisoformat(msg['timestamp_singapore'].replace('Z', '')).strftime('%H:%M:%S')
+        <div style="background: #ffffff; padding: 25px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
             
-            messages_text += f"""
+            <!-- Conversation Summary -->
+            <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+                <h2 style="margin: 0 0 15px 0; color: #1565c0;">📋 Conversation Summary</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div>
+                        <strong>User Email:</strong><br>
+                        <span style="color: #666;">{user_email}</span>
+                    </div>
+                    <div>
+                        <strong>Start Time:</strong><br>
+                        <span style="color: #666;">{start_time}</span>
+                    </div>
+                    <div>
+                        <strong>Duration:</strong><br>
+                        <span style="color: #666;">{duration}</span>
+                    </div>
+                    <div>
+                        <strong>Messages:</strong><br>
+                        <span style="color: #666;">{total_messages}</span>
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <strong>Conversation ID:</strong><br>
+                    <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 12px;">{conversation_id}</code>
+                </div>
+            </div>
+
+            <!-- Full Conversation -->
+            <div style="margin-bottom: 25px;">
+                <h2 style="margin: 0 0 20px 0; color: #333;">💬 Complete Conversation</h2>
+                {messages_html}
+            </div>
+
+            <!-- Footer -->
+            <div style="text-align: center; color: #666; font-size: 14px; border-top: 1px solid #eee; padding-top: 20px;">
+                <p><strong>📧 AniSol AI Assistant</strong><br>
+                Conversation transcript automatically generated<br>
+                <span style="font-size: 12px;">Generated: {datetime.now(COMPANY_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')} SGT</span></p>
+                
+                <p style="margin: 15px 0 0 0; font-size: 13px;">
+                    📞 <strong>Contact:</strong> info@aniketsolutions.com | 
+                    🌐 <strong>Website:</strong> https://www.aniketsolutions.com
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+def create_text_email(user_email, start_time, duration, total_messages, conversation_id, messages):
+    """Create plain text email body"""
+    
+    # Create messages text
+    messages_text = ""
+    for msg in messages:
+        role_display = "Alex (Assistant)" if msg['role'] == 'assistant' else "User"
+        timestamp = msg.get('timestamp_singapore', 'Unknown')
+        if 'T' in timestamp:
+            timestamp = datetime.fromisoformat(timestamp.replace('Z', '')).strftime('%H:%M:%S')
+        
+        messages_text += f"""
 [{timestamp}] {role_display}:
 {msg['content']}
 
 {'=' * 60}
 """
-        
-        return f"""
+    
+    return f"""
 AniSol Conversation Report
 
 CONVERSATION SUMMARY:
@@ -441,9 +319,142 @@ COMPLETE CONVERSATION:
 {messages_text}
 
 Generated automatically by AniSol AI Assistant
-Conversation saved to S3 and emailed automatically
 Contact: info@aniketsolutions.com | Website: https://www.aniketsolutions.com
-        """
+    """
+
+# =============================================================================
+# SIMPLIFIED CONVERSATION MANAGER
+# =============================================================================
+
+class SimpleConversationManager:
+    def __init__(self):
+        self.conversation_id = str(uuid.uuid4())
+        self.user_email = None
+        self.messages = []
+        self.start_time = datetime.now(UTC)
+        
+    def add_message(self, role: str, content: str):
+        """Add a message to the conversation"""
+        current_time = datetime.now(UTC)
+        singapore_time = datetime.now(COMPANY_TIMEZONE)
+        
+        message = {
+            'role': role,
+            'content': content,
+            'timestamp_utc': current_time.isoformat(),
+            'timestamp_singapore': singapore_time.isoformat()
+        }
+        
+        self.messages.append(message)
+    
+    def set_user_email(self, email: str):
+        """Set user email"""
+        self.user_email = email
+    
+    def get_conversation_data(self):
+        """Get complete conversation data"""
+        end_time = datetime.now(UTC)
+        singapore_end_time = datetime.now(COMPANY_TIMEZONE)
+        
+        return {
+            'conversation_id': self.conversation_id,
+            'user_email': self.user_email,
+            'start_time_utc': self.start_time.isoformat(),
+            'start_time_singapore': datetime.now(COMPANY_TIMEZONE).replace(
+                year=self.start_time.year, month=self.start_time.month, day=self.start_time.day,
+                hour=self.start_time.hour, minute=self.start_time.minute, second=self.start_time.second
+            ).isoformat(),
+            'end_time_utc': end_time.isoformat(),
+            'end_time_singapore': singapore_end_time.isoformat(),
+            'total_messages': len(self.messages),
+            'messages': self.messages,
+            'created_at': datetime.now(UTC).isoformat()
+        }
+    
+    def save_and_email_conversation(self):
+        """Execute S3 save and email functions in parallel using threading"""
+        conversation_data = self.get_conversation_data()
+        
+        # Results storage
+        results = {'s3_success': False, 'email_success': False}
+        
+        def save_to_s3():
+            """Thread function for S3 save"""
+            try:
+                results['s3_success'] = save_conversation_to_s3(conversation_data)
+                print(f"S3 Save Thread: {'Success' if results['s3_success'] else 'Failed'}")
+            except Exception as e:
+                print(f"S3 Save Thread Error: {e}")
+                results['s3_success'] = False
+        
+        def send_email():
+            """Thread function for email sending"""
+            try:
+                results['email_success'] = email_conversation_transcript(conversation_data)
+                print(f"Email Thread: {'Success' if results['email_success'] else 'Failed'}")
+            except Exception as e:
+                print(f"Email Thread Error: {e}")
+                results['email_success'] = False
+        
+        # Execute both functions simultaneously using threads
+        print("Starting parallel S3 save and email operations...")
+        
+        # Create threads
+        s3_thread = threading.Thread(target=save_to_s3, name="S3-Save-Thread")
+        email_thread = threading.Thread(target=send_email, name="Email-Send-Thread")
+        
+        # Start both threads at the same time
+        start_time = time.time()
+        s3_thread.start()
+        email_thread.start()
+        
+        # Wait for both threads to complete
+        s3_thread.join()
+        email_thread.join()
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        
+        print(f"Parallel operations completed in {total_time:.2f} seconds")
+        print(f"Final Results - S3: {'Success' if results['s3_success'] else 'Failed'}, Email: {'Success' if results['email_success'] else 'Failed'}")
+        
+        return results['s3_success'], results['email_success']
+    
+    def save_and_email_conversation_async(self):
+        """Alternative: Execute S3 save and email using concurrent.futures for better control"""
+        conversation_data = self.get_conversation_data()
+        
+        print("Starting concurrent S3 save and email operations...")
+        start_time = time.time()
+        
+        # Use ThreadPoolExecutor for better thread management
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="ChatBot") as executor:
+            # Submit both tasks simultaneously
+            s3_future = executor.submit(save_conversation_to_s3, conversation_data)
+            email_future = executor.submit(email_conversation_transcript, conversation_data)
+            
+            # Wait for both to complete and get results
+            try:
+                s3_success = s3_future.result(timeout=30)  # 30 second timeout for S3
+                print(f"S3 operation completed: {'Success' if s3_success else 'Failed'}")
+            except Exception as e:
+                print(f"S3 operation failed: {e}")
+                s3_success = False
+            
+            try:
+                email_success = email_future.result(timeout=30)  # 30 second timeout for email
+                print(f"Email operation completed: {'Success' if email_success else 'Failed'}")
+            except Exception as e:
+                print(f"Email operation failed: {e}")
+                email_success = False
+        
+        end_time = time.time()
+        total_time = end_time - start_time
+        
+        print(f"Concurrent operations completed in {total_time:.2f} seconds")
+        print(f"Final Results - S3: {'Success' if s3_success else 'Failed'}, Email: {'Success' if email_success else 'Failed'}")
+        
+        return s3_success, email_success
 
 # =============================================================================
 # EMAIL VALIDATION AND OTP FUNCTIONS
@@ -689,98 +700,208 @@ def comprehensive_email_validation(email):
     return results
 
 # =============================================================================
-# SMART RESPONSE GENERATION
+# UNIVERSAL KNOWLEDGE AI RESPONSE
 # =============================================================================
 
 def generate_smart_response(user_message):
-    """Generate smart response using OpenAI with conversation history."""
+    """Generate smart response using OpenAI with UNIVERSAL knowledge of ALL products and services."""
     try:
         if st.session_state.get("openai_client"):
             system_prompt = """
-You are Alex, a senior technology consultant at Aniket Solutions. Provide professional responses about our maritime software products and technology services.
+You are Alex, a senior technology consultant at Aniket Solutions. You have COMPLETE knowledge of ALL our offerings and can answer ANY question about maritime products OR technology services, regardless of what the user initially selected.
 
-AVAILABLE MARITIME PRODUCTS:
-- AniSol Inventory Control: Fleet inventory management with spare parts and consumables tracking
-- AniSol Payroll & Master Cash: Crew financial management with multi-currency support
-- AniSol Crewing Module: Complete crew lifecycle management with compliance tracking
-- AniSol TMS: Technical Management System for maintenance and inspections
-- AniSol Procurement: AI-powered purchasing platform with vendor management
+COMPLETE ANIKET SOLUTIONS PORTFOLIO:
 
-AVAILABLE TECHNOLOGY SERVICES:
-- Custom Application Development: Enterprise software solutions and legacy modernization
-- Mobile Solutions: Native iOS/Android apps and cross-platform development
-- AI & Machine Learning: Intelligent automation and predictive analytics
-- Data Services & Migration: Database migration and business intelligence
-- System Integration: API development and enterprise connectivity
-- AI Chatbots & Virtual Assistants: Conversational AI for customer service
+🚢 MARITIME SOFTWARE PRODUCTS:
 
-IMPORTANT INSTRUCTIONS:
-- Always respond based on the full conversation context.
-- If they ask about products, provide detailed product information.
-- If they ask about services, provide detailed service information.
-- Use specific technical details and business benefits.
-- Always include contact info@aniketsolutions.com for detailed consultation.
-- Respond professionally without conversational AI language.
+**AniSol TMS (Technical Management System)**
+- Comprehensive maintenance scheduling and planning with automated workflows
+- Inspection tracking with automated reminders and compliance monitoring
+- Certificate management with expiry alerts and renewal tracking
+- Regulatory compliance monitoring (ISM, ISO, MLC, SOLAS)
+- Work order management and resource allocation
+- Technical documentation and drawings management
+- Performance analytics and KPI dashboards with real-time reporting
+- Integration with classification societies and port state control
+- Spare parts integration for maintenance planning
+- Crew competency tracking for maintenance tasks
+
+**AniSol Procurement - AI-Powered Maritime Purchasing**
+- Intelligent purchase requisition automation with AI-driven recommendations
+- Multi-level approval workflows with role-based permissions
+- Vendor management with performance scoring and evaluation
+- ShipServ marketplace integration for global sourcing
+- Price comparison and negotiation tools with market intelligence
+- Contract management and compliance tracking
+- Spend analytics and cost optimization with predictive insights
+- Emergency procurement workflows for port calls
+- Integration with inventory management for automated reordering
+- Budget management and financial controls
+
+**AniSol Inventory Control - Fleet-Wide Management**
+- Real-time inventory tracking across all vessels and locations
+- Automated reordering based on consumption patterns and lead times
+- Spare parts catalog with detailed technical specifications
+- Critical spares monitoring with safety stock alerts
+- Multi-location warehouse management with transfer capabilities
+- Barcode/RFID integration for efficient tracking
+- Comprehensive audit trails and stock reconciliation
+- Cost center allocation and detailed reporting
+- Integration with procurement and maintenance systems
+- Obsolescence management and lifecycle tracking
+
+**AniSol Crewing Module - Complete Crew Management**
+- Crew planning and rotation scheduling with optimization algorithms
+- Certificate and license tracking with automated expiry alerts
+- Medical certificate management and health monitoring
+- Training records and competency matrix management
+- Performance evaluation and analytics with KPI tracking
+- Visa and travel document management with renewal alerts
+- Crew welfare programs and family communication systems
+- Integration with manning agencies and recruitment partners
+- Payroll integration for seamless financial management
+- Compliance tracking for MLC, STCW, and flag state requirements
+
+**AniSol Payroll & Master Cash - Crew Financial Management**
+- Multi-currency payroll processing with real-time exchange rates
+- Allotment management for crew families with bank integration
+- Tax compliance across multiple jurisdictions
+- Cash advance tracking and reconciliation
+- Overtime calculation and approval workflows
+- Benefits administration and pension management
+- Financial reporting and analytics with cost center allocation
+- Bank integration for direct payments and transfers
+- Mobile access for crew to view pay statements and balances
+- Integration with crewing module for seamless data flow
+
+💻 TECHNOLOGY SERVICES:
+
+**Custom Application Development**
+- Enterprise software architecture and development using modern frameworks
+- Legacy system modernization and cloud migration strategies
+- Cloud-native application development with microservices architecture
+- Database design, optimization, and performance tuning
+- Security implementation and compliance (SOC 2, ISO 27001)
+- Performance optimization and scalability planning
+- DevOps and CI/CD pipeline setup with automated testing
+- API development and integration services
+- Mobile-responsive web applications
+- Quality assurance and testing automation
+
+**Mobile Solutions**
+- Native iOS and Android development with platform-specific optimizations
+- Cross-platform solutions using React Native and Flutter
+- Offline-first mobile applications with data synchronization
+- Enterprise mobile app management and security
+- Mobile device management (MDM) solutions
+- App store deployment and maintenance
+- Mobile analytics and user experience optimization
+- Integration with enterprise backend systems and APIs
+- Maritime-specific mobile apps (crew apps, inventory scanning, maintenance reporting)
+- Push notifications and real-time communication features
+
+**AI & Machine Learning Services**
+- Predictive maintenance algorithms for maritime equipment
+- Natural language processing for document automation
+- Computer vision and image recognition for inspections
+- Intelligent document processing and data extraction
+- Chatbots and virtual assistants for customer service
+- Machine learning model development and deployment
+- AI strategy consulting and implementation roadmaps
+- Data science and analytics platforms
+- Recommendation engines for procurement and inventory
+- Anomaly detection for operational monitoring
+
+**Data Services & Migration**
+- Database migration and modernization projects
+- Data warehouse design and implementation
+- Business intelligence and reporting solutions with interactive dashboards
+- ETL/ELT pipeline development and automation
+- Data quality management and governance frameworks
+- Real-time analytics and operational dashboards
+- Big data processing and storage solutions
+- Data lake architecture and implementation
+- Master data management and data integration
+- Compliance reporting and regulatory data management
+
+**System Integration Services**
+- Enterprise application integration with seamless data flow
+- API development and management platforms
+- Hybrid cloud-premise connectivity solutions
+- Third-party system integration and middleware
+- Workflow automation and business process orchestration
+- Event-driven architecture implementation
+- Message queuing and real-time processing
+- Integration testing and monitoring tools
+- Legacy system connectivity and modernization
+- B2B integration and electronic data interchange (EDI)
+
+**AI Chatbots & Virtual Assistants**
+- Conversational AI development with natural language understanding
+- Multi-channel deployment (web, mobile, messaging platforms, voice)
+- Intent recognition and response generation with machine learning
+- Integration with knowledge bases and enterprise systems
+- Analytics and conversation optimization with performance insights
+- Voice assistant development and speech recognition
+- Multilingual support and localization capabilities
+- 24/7 automated customer support and service desk
+- Maritime-specific chatbots for crew support and operational queries
+- Escalation workflows to human agents when needed
+
+INTEGRATION CAPABILITIES:
+- All maritime products integrate seamlessly with each other
+- Technology services can enhance and extend maritime product capabilities
+- Custom mobile apps can be built to integrate with AniSol maritime systems
+- AI services can be integrated into existing maritime workflows
+- Chatbots can provide support for maritime operations and crew
+
+CRITICAL INSTRUCTIONS:
+1. Answer ANY question about ANY product or service - completely ignore any initial category selection
+2. For customer support/chatbot questions → discuss our AI Chatbots & Virtual Assistants service
+3. For mobile app questions → discuss our Mobile Solutions service and maritime app integrations
+4. For custom software questions → discuss our Custom Development service
+5. For maritime operational questions → discuss relevant AniSol products
+6. For AI/ML questions → discuss our AI & Machine Learning services
+7. ALWAYS cross-reference when relevant (e.g., "We can integrate chatbots with your AniSol maritime systems")
+8. Provide specific technical details and business benefits
+9. Include contact info@aniketsolutions.com for detailed consultation
+10. Be conversational and helpful - address exactly what the user asks
+11. If asked about pricing, implementation, or demos, provide helpful guidance and direct to contact for personalized consultation
+
+REMEMBER: You have universal knowledge and can discuss ALL products and services in any conversation!
 """
             
-            # --- START OF CHANGES ---
-
-            # 1. Create the base message list with the system prompt
+            # Include comprehensive conversation history for better context
             messages_to_send = [{"role": "system", "content": system_prompt}]
 
-            # 2. Get the last 6 messages from session state to provide context
-            #    We re-format them to ensure they only have 'role' and 'content' keys
+            # Get last 10 messages for context
             recent_history = [
                 {"role": msg["role"], "content": msg["content"]} 
-                for msg in st.session_state.messages[-6:]
+                for msg in st.session_state.messages[-10:]
             ]
             
-            # 3. Add the recent history to our list
             messages_to_send.extend(recent_history)
-            
-            # Note: The user's latest message is already in st.session_state.messages,
-            # so we don't need to add it separately.
-
-            # --- END OF CHANGES ---
             
             response = st.session_state.openai_client.chat.completions.create(
                 model="gpt-4",
-                messages=messages_to_send, # Use the new list with history
-                temperature=0.2,
-                max_tokens=600,
-                presence_penalty=0.0,
-                frequency_penalty=0.0
+                messages=messages_to_send,
+                temperature=0.3,
+                max_tokens=800,
+                presence_penalty=0.1,
+                frequency_penalty=0.1
             )
             
             return response.choices[0].message.content.strip()
         
-        return "For information about our maritime software products and technology services, contact our specialists at info@aniketsolutions.com for detailed consultation."
+        return "I can help you with any questions about our maritime software products or technology services. Contact info@aniketsolutions.com for detailed consultation."
         
     except Exception as e:
-        # It's good practice to log the actual error for debugging
         print(f"Error in generate_smart_response: {e}")
-        return "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
+        return "For information about any of our maritime products or technology services, contact info@aniketsolutions.com"
 
 # =============================================================================
-# HELPER FUNCTIONS
+# SIMPLIFIED HELPER FUNCTIONS
 # =============================================================================
-
-def check_s3_status():
-    """Check if S3 storage is working"""
-    try:
-        storage = S3StorageManager()
-        
-        # Test write/read
-        test_key = f"test/{datetime.now().isoformat()}.json"
-        test_data = {"test": True, "timestamp": datetime.now().isoformat()}
-        
-        if storage.save_json(test_key, test_data):
-            return True, f"S3 bucket '{S3_BUCKET_NAME}' connected successfully"
-        else:
-            return False, "S3 write operation failed"
-            
-    except Exception as e:
-        return False, f"S3 connection error: {str(e)}"
 
 def add_message_to_chat(role, content, timestamp=None):
     """Add message to chat and conversation manager"""
@@ -802,11 +923,12 @@ def update_user_activity():
     """Update the last user activity timestamp"""
     st.session_state.last_user_activity = datetime.now()
 
-def check_conversation_inactivity():
-    """Check for conversation inactivity"""
+def check_conversation_flow():
+    """Check conversation flow with proactive engagement and graceful ending"""
     if "last_user_activity" not in st.session_state:
         st.session_state.last_user_activity = datetime.now()
         st.session_state.conversation_ended = False
+        st.session_state.asked_for_more_questions = False
         return False
     
     current_time = datetime.now()
@@ -825,27 +947,50 @@ def check_conversation_inactivity():
     if st.session_state.conversation_flow.get("otp_verified"):
         time_since_activity = current_time - st.session_state.last_user_activity
         
-        # If 5 minutes of inactivity, end conversation
-        if time_since_activity.total_seconds() > 300:  # 5 minutes
+        # First warning at 3 minutes - ask if they have more questions
+        if (time_since_activity.total_seconds() > 180 and  # 3 minutes
+            not st.session_state.get("asked_for_more_questions")):
+            
+            st.session_state.asked_for_more_questions = True
+            st.session_state.follow_up_time = current_time
+            
+            add_message_to_chat("assistant", 
+                "Is there anything else I can help you with regarding our maritime products or technology services?")
+            
+            return False
+        
+        # Final timeout at 6 minutes total (3 min + 3 min after follow-up)
+        elif (st.session_state.get("asked_for_more_questions") and 
+              time_since_activity.total_seconds() > 360):  # 6 minutes total
+            
             st.session_state.conversation_ended = True
             
-            # Complete conversation: save to S3 and send email
+            # Add graceful ending message
+            add_message_to_chat("assistant", 
+                "Thank you for your time! It was great discussing our solutions with you. This conversation has been completed and saved. You'll receive a copy via email shortly. Have a wonderful day!")
+            
+            # PARALLEL EXECUTION: Save to S3 and email transcript simultaneously
             if "conversation_manager" in st.session_state:
-                success = st.session_state.conversation_manager.complete_conversation()
-                if success:
-                    add_message_to_chat("assistant", 
-                        "Thank you for your time! This conversation has been completed and saved. You'll receive a copy via email shortly.")
-                else:
-                    add_message_to_chat("assistant", 
-                        "Thank you for your time! This conversation has been completed.")
+                s3_success, email_success = st.session_state.conversation_manager.save_and_email_conversation()
+                print(f"Parallel Operations - S3: {'Success' if s3_success else 'Failed'}, Email: {'Success' if email_success else 'Failed'}")
+                
+                # Optional: Use the alternative async method
+                # s3_success, email_success = st.session_state.conversation_manager.save_and_email_conversation_async()
             
             return True
     
     return False
 
+def auto_restart_conversation():
+    """Automatically restart conversation after completion"""
+    # Clear all session state and restart
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
 def add_initial_greeting():
     """Add initial greeting message"""
-    greeting_message = """Hi! I'm Alex from Aniket Solutions. How can I assist you with maritime software or tech services? Please share your corporate email."""
+    greeting_message = """Hi! I'm Alex from Aniket Solutions. I can help you with any questions about our maritime software products OR technology services. Please share your corporate email to get started."""
     
     timestamp = datetime.now().strftime("%H:%M")
     st.session_state.messages.append({
@@ -862,7 +1007,7 @@ def handle_email_validation_flow(email, validation_result):
         
         # Update conversation manager with email
         if "conversation_manager" in st.session_state:
-            st.session_state.conversation_manager.update_user_email(email)
+            st.session_state.conversation_manager.set_user_email(email)
         
         otp = generate_otp()
         success, message = send_otp_email(email, otp)
@@ -975,25 +1120,74 @@ st.markdown("""
     
     /* Conversation ended styling */
     .conversation-ended {
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border: 2px solid #28a745;
+        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+        border: 2px solid #4caf50;
         border-radius: 15px;
         padding: 30px;
         text-align: center;
         margin: 20px 0;
-        box-shadow: 0 4px 15px rgba(40, 167, 69, 0.2);
+        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
     }
     
     .conversation-ended h3 {
-        color: #28a745;
+        color: #2e7d32;
         margin-bottom: 15px;
         font-size: 1.5rem;
     }
     
     .conversation-ended p {
-        color: #666;
+        color: #388e3c;
         margin-bottom: 15px;
         font-size: 1.1rem;
+    }
+
+    /* Universal knowledge indicator */
+    .universal-indicator {
+        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+        border: 2px solid #4caf50;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        text-align: center;
+    }
+    
+    .universal-indicator h4 {
+        color: #2e7d32;
+        margin: 0 0 5px 0;
+    }
+    
+    .universal-indicator p {
+        color: #388e3c;
+        margin: 0;
+        font-size: 14px;
+    }
+
+    /* Auto-restart indicator */
+    .auto-restart-indicator {
+        background: linear-gradient(135deg, #fff3e0 0%, #ffcc02 100%);
+        border: 2px solid #ff9800;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 15px 0;
+        text-align: center;
+        animation: pulse 2s infinite;
+    }
+    
+    .auto-restart-indicator h4 {
+        color: #f57c00;
+        margin: 0 0 5px 0;
+    }
+    
+    .auto-restart-indicator p {
+        color: #ef6c00;
+        margin: 0;
+        font-size: 14px;
+    }
+
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1022,73 +1216,84 @@ if "openai_client" not in st.session_state:
     else:
         st.session_state.openai_client = None
 
+# Conversation flow state
 if "conversation_flow" not in st.session_state:
     st.session_state.conversation_flow = {
         "email_validated": False,
         "awaiting_email": True,
         "awaiting_otp": False,
         "otp_verified": False,
-        "awaiting_selection": False,
-        "selected_category": None
+        "awaiting_selection": False
     }
 
 if "otp_data" not in st.session_state:
     st.session_state.otp_data = None
 
-# Initialize conversation manager
-if "conversation_manager" not in st.session_state:
-    st.session_state.conversation_manager = ConversationManager()
-    session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(1000, 9999)}"
-    st.session_state.conversation_manager.start_new_conversation(session_id)
+# Activity tracking
+if "last_user_activity" not in st.session_state:
+    st.session_state.last_user_activity = datetime.now()
 
-# Check for conversation inactivity
-conversation_ended = check_conversation_inactivity()
+if "conversation_ended" not in st.session_state:
+    st.session_state.conversation_ended = False
+
+if "asked_for_more_questions" not in st.session_state:
+    st.session_state.asked_for_more_questions = False
+
+# SIMPLIFIED: Initialize conversation manager
+if "conversation_manager" not in st.session_state:
+    st.session_state.conversation_manager = SimpleConversationManager()
+
+# Check conversation flow
+conversation_ended = check_conversation_flow()
 
 # Add initial greeting if messages is empty
 if len(st.session_state.messages) == 0:
     add_initial_greeting()
 
-# If conversation has ended, show completion message
+# If conversation has ended, show completion message and auto-restart
 if conversation_ended:
     st.markdown("""
     <div class="conversation-ended">
         <h3>✅ Conversation Completed</h3>
-        <p>Thank you for your time! Your conversation has been saved to our records and you'll receive a copy via email.</p>
-        <p><small>The conversation will restart automatically in a few moments.</small></p>
+        <p>Thank you for your time! Your conversation has been saved and you'll receive a copy via email.</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Auto-restart after 5 seconds
+    # Auto-restart indicator
     st.markdown("""
-    <script>
-    setTimeout(function() {
-        window.location.reload();
-    }, 5000);
-    </script>
+    <div class="auto-restart-indicator">
+        <h4>🔄 Starting New Session</h4>
+        <p>Automatically restarting in 3 seconds...</p>
+    </div>
     """, unsafe_allow_html=True)
     
-    # Manual restart option
-    if st.button("🔄 Start New Conversation", use_container_width=True):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
-    
-    st.stop()
+    # Auto-restart after 3 seconds
+    time.sleep(3)
+    auto_restart_conversation()
 
 # Sidebar for configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    # S3 Storage Status
-    st.subheader("☁️ S3 Storage Status")
-    try:
-        storage_status, storage_message = check_s3_status()
-        if storage_status:
-            st.success(f"✅ {storage_message}")
+    # Universal Knowledge Indicator
+    st.markdown("""
+    <div class="universal-indicator">
+        <h4>🧠 Universal Knowledge Mode</h4>
+        <p>AI can answer questions about ALL products and services</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Conversation status
+    if st.session_state.conversation_flow.get("otp_verified"):
+        time_since_activity = datetime.now() - st.session_state.last_user_activity
+        minutes_inactive = int(time_since_activity.total_seconds() // 60)
+        
+        if minutes_inactive >= 3 and not st.session_state.get("asked_for_more_questions"):
+            st.warning("💬 Just asked if you have more questions!")
+        elif st.session_state.get("asked_for_more_questions"):
+            st.info("⏰ Conversation will end in ~3 minutes if no response")
         else:
-            st.error(f"❌ {storage_message}")
-    except Exception as e:
-        st.error(f"❌ S3 error: {str(e)}")
+            st.success(f"✅ Active conversation ({minutes_inactive}m inactive)")
     
     st.divider()
     
@@ -1107,18 +1312,6 @@ with st.sidebar:
     else:
         st.success("✅ API Key configured")
     
-    st.subheader("🔄 Session Management")
-    
-    if st.button("🔄 Reset Session", use_container_width=True):
-        # Complete current conversation before reset
-        if "conversation_manager" in st.session_state and not st.session_state.get("conversation_ended"):
-            st.session_state.conversation_manager.complete_conversation()
-        
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.success("Session reset!")
-        st.rerun()
-    
     st.divider()
     
     # AWS Configuration Status
@@ -1136,7 +1329,9 @@ with st.sidebar:
     st.divider()
     
     st.subheader("🚀 System Status")
-    st.success("✅ Auto-save & email on completion")
+    st.success("✅ Simplified S3 & Email functions")
+    st.success("✅ Proactive engagement (3min)")
+    st.success("✅ Auto-restart after completion")
 
 # Main chat interface
 chat_container = st.container()
@@ -1225,7 +1420,7 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                     is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
                     
                     if is_valid:
-                        add_message_to_chat("assistant", "✅ Email verified! What would you like to know more about?")
+                        add_message_to_chat("assistant", "✅ Email verified! What would you like to explore? (I can answer questions about ALL our products and services)")
                         
                         st.session_state.conversation_flow["awaiting_otp"] = False
                         st.session_state.conversation_flow["otp_verified"] = True
@@ -1272,72 +1467,60 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
 
 elif st.session_state.conversation_flow["awaiting_selection"]:
     st.markdown("---")
-    st.markdown("**What would you like to know more about?**")
+    st.markdown("**What would you like to explore first?**")
+    
+    # Universal knowledge indicator
+    st.markdown("""
+    <div class="universal-indicator">
+        <h4>🧠 Universal Knowledge</h4>
+        <p>I can answer questions about ALL our products and services throughout our conversation!</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🚢 Maritime Products", key="select_products", use_container_width=True):
+        if st.button("🚢 Start with Maritime Products", key="select_products", use_container_width=True):
             update_user_activity()
-            add_message_to_chat("user", "I'm interested in your maritime products")
+            add_message_to_chat("user", "I'd like to learn about your maritime products")
             
-            st.session_state.conversation_flow["selected_category"] = "products"
             st.session_state.conversation_flow["awaiting_selection"] = False
             
-            products_overview = """Our AniSol Maritime Software Suite provides integrated operational management for complex fleet requirements and regulatory compliance.
+            products_overview = """Perfect! Our AniSol Maritime Software Suite includes:
 
-**Product Portfolio:**
+🚢 **AniSol TMS** - Technical Management System for maintenance, inspections, and compliance
+🛒 **AniSol Procurement** - AI-powered purchasing and vendor management  
+📦 **AniSol Inventory Control** - Fleet-wide inventory with automated reordering
+👥 **AniSol Crewing Module** - Complete crew lifecycle management
+💰 **AniSol Payroll & Master Cash** - Multi-currency crew financial management
 
-**AniSol TMS** - Technical Management System
-Comprehensive maintenance scheduling, inspection tracking, and certificate management with maritime-specific workflows.
-
-**AniSol Procurement** - AI-Powered Maritime Purchasing
-Advanced procurement automation with vendor management, approval controls, and ShipServ integration.
-
-**AniSol Inventory Control** - Fleet-Wide Inventory Management
-Real-time inventory tracking with automated reordering and comprehensive audit capabilities.
-
-**AniSol Crewing Module** - Complete Crew Management
-Full crew lifecycle management including compliance tracking, performance analytics, and payroll integration.
-
-**AniSol Payroll & Master Cash** - Crew Financial Management
-Maritime-specific payroll processing with multi-currency support and regulatory compliance.
-
-Which specific operational area interests you most?"""
+💡 **Remember**: I can also help with technology services like AI chatbots, mobile apps, custom development, and system integration. What specific area interests you most?"""
             
             add_message_to_chat("assistant", products_overview)
             st.rerun()
     
     with col2:
-        if st.button("💻 Technology Services", key="select_services", use_container_width=True):
+        if st.button("💻 Start with Technology Services", key="select_services", use_container_width=True):
             update_user_activity()
-            add_message_to_chat("user", "I'm interested in your technology services")
+            add_message_to_chat("user", "I'd like to learn about your technology services")
             
-            st.session_state.conversation_flow["selected_category"] = "services"
             st.session_state.conversation_flow["awaiting_selection"] = False
             
-            services_overview = """Our Technology Services address comprehensive business modernization requirements through specialized expertise and proven implementation methodologies.
+            services_overview = """Excellent! Our Technology Services include:
 
-**Service Capabilities:**
+💻 **Custom Development** - Enterprise software and legacy modernization
+📱 **Mobile Solutions** - Native iOS/Android apps with maritime integration
+🤖 **AI & Machine Learning** - Intelligent automation and predictive analytics
+🤖 **AI Chatbots & Virtual Assistants** - Customer support automation
+📊 **Data Services** - Migration, analytics, and business intelligence
+🔗 **System Integration** - API development and enterprise connectivity
 
-**Custom Development** - Enterprise software solutions and legacy system modernization using modern architectures and frameworks.
-
-**Mobile Applications** - Native iOS/Android development and cross-platform solutions with offline capabilities and enterprise integration.
-
-**AI & Machine Learning** - Intelligent automation implementation including predictive analytics, natural language processing, and computer vision.
-
-**Data Services** - Database migration, data warehousing, analytics platforms, and business intelligence systems.
-
-**System Integration** - API development, enterprise application connectivity, and hybrid cloud-premise architectures.
-
-**AI Chatbots & Virtual Assistants** - Conversational AI for customer service automation with multi-channel deployment capabilities.
-
-Which technology challenge can we help you solve?"""
+💡 **Remember**: I can also discuss our maritime products and how they integrate with our technology services. What challenge can I help you solve?"""
             
             add_message_to_chat("assistant", services_overview)
             st.rerun()
 
-# Chat input (only show after category selection)
+# Chat input (only show after category selection or OTP verification)
 if (not st.session_state.conversation_flow["awaiting_email"] and 
     not st.session_state.conversation_flow["awaiting_otp"] and
     not st.session_state.conversation_flow["awaiting_selection"]):
@@ -1348,7 +1531,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
         with col1:
             user_input = st.text_input(
                 "Message",
-                placeholder="Ask about our maritime products or technology services...",
+                placeholder="Ask about any maritime product or technology service...",
                 label_visibility="collapsed"
             )
         
@@ -1369,7 +1552,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
                     st.rerun()
                     
                 except Exception as e:
-                    fallback_response = "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
+                    fallback_response = "I can help you with any questions about our maritime products or technology services. Contact info@aniketsolutions.com for detailed consultation."
                     add_message_to_chat("assistant", fallback_response)
                     st.rerun()
 
@@ -1377,7 +1560,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; font-size: 0.8rem;'>"
-    "Powered by Aniket Solutions"
+    "Powered by Aniket Solutions - Simplified S3 & Email Functions"
     "</div>",
     unsafe_allow_html=True
 )
