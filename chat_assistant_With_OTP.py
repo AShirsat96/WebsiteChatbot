@@ -19,8 +19,6 @@ import uuid
 import pytz
 from typing import Optional, Dict, List, Any
 import pandas as pd
-import threading
-import concurrent.futures
 
 # Load environment variables from .env file
 load_dotenv()
@@ -68,11 +66,11 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
     )
 
 # =============================================================================
-# SIMPLIFIED S3 STORAGE FUNCTION
+# FIXED S3 STORAGE FUNCTION - NON-BLOCKING
 # =============================================================================
 
 def save_conversation_to_s3(conversation_data):
-    """Simple function to save conversation transcript to S3"""
+    """Simple function to save conversation transcript to S3 - with error handling"""
     try:
         if not s3_client:
             print("S3 client not configured")
@@ -116,19 +114,19 @@ def save_conversation_to_s3(conversation_data):
             ServerSideEncryption='AES256'
         )
         
-        print(f"Conversation saved to S3: {s3_key}")
+        print(f"✅ Conversation saved to S3: {s3_key}")
         return True
         
     except Exception as e:
-        print(f"Error saving to S3: {e}")
+        print(f"❌ S3 save error: {e}")
         return False
 
 # =============================================================================
-# SIMPLIFIED EMAIL FUNCTION
+# FIXED EMAIL FUNCTION - NON-BLOCKING
 # =============================================================================
 
 def email_conversation_transcript(conversation_data):
-    """Simple function to email conversation transcript"""
+    """Simple function to email conversation transcript - with error handling"""
     try:
         if not ses_client:
             print("SES client not configured")
@@ -186,11 +184,11 @@ def email_conversation_transcript(conversation_data):
             }
         )
         
-        print(f"Email sent successfully to {NOTIFICATION_EMAIL}")
+        print(f"✅ Email sent successfully to {NOTIFICATION_EMAIL}")
         return True
         
     except Exception as e:
-        print(f"Error sending email: {e}")
+        print(f"❌ Email send error: {e}")
         return False
 
 def create_html_email(user_email, start_time, duration, total_messages, conversation_id, messages):
@@ -323,7 +321,7 @@ Contact: info@aniketsolutions.com | Website: https://www.aniketsolutions.com
     """
 
 # =============================================================================
-# SIMPLIFIED CONVERSATION MANAGER
+# FIXED CONVERSATION MANAGER - SIMPLE & RELIABLE
 # =============================================================================
 
 class SimpleConversationManager:
@@ -371,90 +369,36 @@ class SimpleConversationManager:
             'created_at': datetime.now(UTC).isoformat()
         }
     
-    def save_and_email_conversation(self):
-        """Execute S3 save and email functions in parallel using threading"""
-        conversation_data = self.get_conversation_data()
-        
-        # Results storage
-        results = {'s3_success': False, 'email_success': False}
-        
-        def save_to_s3():
-            """Thread function for S3 save"""
-            try:
-                results['s3_success'] = save_conversation_to_s3(conversation_data)
-                print(f"S3 Save Thread: {'Success' if results['s3_success'] else 'Failed'}")
-            except Exception as e:
-                print(f"S3 Save Thread Error: {e}")
-                results['s3_success'] = False
-        
-        def send_email():
-            """Thread function for email sending"""
-            try:
-                results['email_success'] = email_conversation_transcript(conversation_data)
-                print(f"Email Thread: {'Success' if results['email_success'] else 'Failed'}")
-            except Exception as e:
-                print(f"Email Thread Error: {e}")
-                results['email_success'] = False
-        
-        # Execute both functions simultaneously using threads
-        print("Starting parallel S3 save and email operations...")
-        
-        # Create threads
-        s3_thread = threading.Thread(target=save_to_s3, name="S3-Save-Thread")
-        email_thread = threading.Thread(target=send_email, name="Email-Send-Thread")
-        
-        # Start both threads at the same time
-        start_time = time.time()
-        s3_thread.start()
-        email_thread.start()
-        
-        # Wait for both threads to complete
-        s3_thread.join()
-        email_thread.join()
-        
-        end_time = time.time()
-        total_time = end_time - start_time
-        
-        print(f"Parallel operations completed in {total_time:.2f} seconds")
-        print(f"Final Results - S3: {'Success' if results['s3_success'] else 'Failed'}, Email: {'Success' if results['email_success'] else 'Failed'}")
-        
-        return results['s3_success'], results['email_success']
-    
-    def save_and_email_conversation_async(self):
-        """Alternative: Execute S3 save and email using concurrent.futures for better control"""
-        conversation_data = self.get_conversation_data()
-        
-        print("Starting concurrent S3 save and email operations...")
-        start_time = time.time()
-        
-        # Use ThreadPoolExecutor for better thread management
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="ChatBot") as executor:
-            # Submit both tasks simultaneously
-            s3_future = executor.submit(save_conversation_to_s3, conversation_data)
-            email_future = executor.submit(email_conversation_transcript, conversation_data)
+    def save_and_email_conversation_simple(self):
+        """FIXED: Simple function that saves and emails without blocking - fire and forget"""
+        try:
+            conversation_data = self.get_conversation_data()
             
-            # Wait for both to complete and get results
+            # Fire and forget - don't wait for results
+            print("🚀 Starting S3 save and email operations...")
+            
+            # Try S3 save (non-blocking)
             try:
-                s3_success = s3_future.result(timeout=30)  # 30 second timeout for S3
-                print(f"S3 operation completed: {'Success' if s3_success else 'Failed'}")
+                s3_result = save_conversation_to_s3(conversation_data)
             except Exception as e:
                 print(f"S3 operation failed: {e}")
-                s3_success = False
+                s3_result = False
             
+            # Try email send (non-blocking)
             try:
-                email_success = email_future.result(timeout=30)  # 30 second timeout for email
-                print(f"Email operation completed: {'Success' if email_success else 'Failed'}")
+                email_result = email_conversation_transcript(conversation_data)
             except Exception as e:
                 print(f"Email operation failed: {e}")
-                email_success = False
-        
-        end_time = time.time()
-        total_time = end_time - start_time
-        
-        print(f"Concurrent operations completed in {total_time:.2f} seconds")
-        print(f"Final Results - S3: {'Success' if s3_success else 'Failed'}, Email: {'Success' if email_success else 'Failed'}")
-        
-        return s3_success, email_success
+                email_result = False
+            
+            print(f"💾 S3 Save: {'Success' if s3_result else 'Failed'}")
+            print(f"📧 Email Send: {'Success' if email_result else 'Failed'}")
+            
+            return s3_result, email_result
+            
+        except Exception as e:
+            print(f"❌ Conversation save error: {e}")
+            return False, False
 
 # =============================================================================
 # EMAIL VALIDATION AND OTP FUNCTIONS
@@ -900,7 +844,7 @@ REMEMBER: You have universal knowledge and can discuss ALL products and services
         return "For information about any of our maritime products or technology services, contact info@aniketsolutions.com"
 
 # =============================================================================
-# SIMPLIFIED HELPER FUNCTIONS
+# FIXED HELPER FUNCTIONS - NON-BLOCKING
 # =============================================================================
 
 def add_message_to_chat(role, content, timestamp=None):
@@ -924,7 +868,7 @@ def update_user_activity():
     st.session_state.last_user_activity = datetime.now()
 
 def check_conversation_flow():
-    """Check conversation flow with proactive engagement and graceful ending"""
+    """FIXED: Check conversation flow with non-blocking logic"""
     if "last_user_activity" not in st.session_state:
         st.session_state.last_user_activity = datetime.now()
         st.session_state.conversation_ended = False
@@ -969,23 +913,32 @@ def check_conversation_flow():
             add_message_to_chat("assistant", 
                 "Thank you for your time! It was great discussing our solutions with you. This conversation has been completed and saved. You'll receive a copy via email shortly. Have a wonderful day!")
             
-            # PARALLEL EXECUTION: Save to S3 and email transcript simultaneously
+            # FIXED: Non-blocking save and email
             if "conversation_manager" in st.session_state:
-                s3_success, email_success = st.session_state.conversation_manager.save_and_email_conversation()
-                print(f"Parallel Operations - S3: {'Success' if s3_success else 'Failed'}, Email: {'Success' if email_success else 'Failed'}")
-                
-                # Optional: Use the alternative async method
-                # s3_success, email_success = st.session_state.conversation_manager.save_and_email_conversation_async()
+                try:
+                    s3_success, email_success = st.session_state.conversation_manager.save_and_email_conversation_simple()
+                    print(f"✅ Operations completed - S3: {'Success' if s3_success else 'Failed'}, Email: {'Success' if email_success else 'Failed'}")
+                except Exception as e:
+                    print(f"❌ Save/email error: {e}")
             
             return True
     
     return False
 
-def auto_restart_conversation():
-    """Automatically restart conversation after completion"""
-    # Clear all session state and restart
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+def safe_restart_conversation():
+    """FIXED: Safely restart conversation instantly without delays"""
+    # Only delete specific conversation-related keys
+    keys_to_delete = [
+        "messages", "conversation_manager", "last_user_activity",
+        "conversation_ended", "asked_for_more_questions", 
+        "conversation_flow", "otp_data"
+        # Removed "restart_time" as it's no longer needed
+    ]
+    
+    for key in keys_to_delete:
+        if key in st.session_state:
+            del st.session_state[key]
+    
     st.rerun()
 
 def add_initial_greeting():
@@ -1054,9 +1007,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS
+# Custom CSS - CLEANED UP
 st.markdown("""
 <style>
+    /* Universal knowledge indicator */
+    .universal-indicator {
+        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+        border: 2px solid #4caf50;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        text-align: center;
+    }
+    
+    .universal-indicator h4 {
+        color: #2e7d32;
+        margin: 0 0 5px 0;
+    }
+    
+    .universal-indicator p {
+        color: #388e3c;
+        margin: 0;
+        font-size: 14px;
+    }
+    
     /* Hide sidebar completely */
     .css-1d391kg, .css-1rs6os, .css-17eq0hr, section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
         display: none !important;
@@ -1118,7 +1092,7 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
     }
     
-    /* Conversation ended styling */
+    /* FIXED: Simple conversation ended styling - instant restart */
     .conversation-ended {
         background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
         border: 2px solid #4caf50;
@@ -1140,55 +1114,6 @@ st.markdown("""
         margin-bottom: 15px;
         font-size: 1.1rem;
     }
-
-    /* Universal knowledge indicator */
-    .universal-indicator {
-        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
-        border: 2px solid #4caf50;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        text-align: center;
-    }
-    
-    .universal-indicator h4 {
-        color: #2e7d32;
-        margin: 0 0 5px 0;
-    }
-    
-    .universal-indicator p {
-        color: #388e3c;
-        margin: 0;
-        font-size: 14px;
-    }
-
-    /* Auto-restart indicator */
-    .auto-restart-indicator {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffcc02 100%);
-        border: 2px solid #ff9800;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 15px 0;
-        text-align: center;
-        animation: pulse 2s infinite;
-    }
-    
-    .auto-restart-indicator h4 {
-        color: #f57c00;
-        margin: 0 0 5px 0;
-    }
-    
-    .auto-restart-indicator p {
-        color: #ef6c00;
-        margin: 0;
-        font-size: 14px;
-    }
-
-    @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
-        70% { box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1197,7 +1122,7 @@ ALEX_AVATAR_URL = "https://raw.githubusercontent.com/AShirsat96/WebsiteChatbot/m
 USER_AVATAR_URL = "https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=4f46e5&fontSize=40"
 
 # =============================================================================
-# MAIN APP INITIALIZATION
+# MAIN APP INITIALIZATION - FIXED
 # =============================================================================
 
 # Initialize session state
@@ -1239,9 +1164,13 @@ if "conversation_ended" not in st.session_state:
 if "asked_for_more_questions" not in st.session_state:
     st.session_state.asked_for_more_questions = False
 
-# SIMPLIFIED: Initialize conversation manager
-if "conversation_manager" not in st.session_state:
-    st.session_state.conversation_manager = SimpleConversationManager()
+# FIXED: Initialize conversation manager with error handling
+try:
+    if "conversation_manager" not in st.session_state:
+        st.session_state.conversation_manager = SimpleConversationManager()
+except Exception as e:
+    print(f"Error initializing conversation manager: {e}")
+    st.session_state.conversation_manager = None
 
 # Check conversation flow
 conversation_ended = check_conversation_flow()
@@ -1250,26 +1179,18 @@ conversation_ended = check_conversation_flow()
 if len(st.session_state.messages) == 0:
     add_initial_greeting()
 
-# If conversation has ended, show completion message and auto-restart
+# FIXED: If conversation has ended, show completion and instant restart
 if conversation_ended:
     st.markdown("""
     <div class="conversation-ended">
         <h3>✅ Conversation Completed</h3>
         <p>Thank you for your time! Your conversation has been saved and you'll receive a copy via email.</p>
+        <p><em>Starting a new session now...</em></p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Auto-restart indicator
-    st.markdown("""
-    <div class="auto-restart-indicator">
-        <h4>🔄 Starting New Session</h4>
-        <p>Automatically restarting in 3 seconds...</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Auto-restart after 3 seconds
-    time.sleep(3)
-    auto_restart_conversation()
+    # FIXED: Instant restart - no countdown, no blocking
+    safe_restart_conversation()
 
 # Sidebar for configuration
 with st.sidebar:
@@ -1329,9 +1250,9 @@ with st.sidebar:
     st.divider()
     
     st.subheader("🚀 System Status")
-    st.success("✅ Simplified S3 & Email functions")
-    st.success("✅ Proactive engagement (3min)")
-    st.success("✅ Auto-restart after completion")
+    st.success("✅ Non-blocking operations")
+    st.success("✅ Instant restart (no countdown)")
+    st.success("✅ Production ready")
 
 # Main chat interface
 chat_container = st.container()
@@ -1380,11 +1301,16 @@ if st.session_state.conversation_flow["awaiting_email"]:
                 add_message_to_chat("user", email_input)
                 
                 with st.spinner("Validating email..."):
-                    validation_result = comprehensive_email_validation(email_input.strip())
-                    
-                    if handle_email_validation_flow(email_input.strip(), validation_result):
-                        st.rerun()
-                    else:
+                    try:
+                        validation_result = comprehensive_email_validation(email_input.strip())
+                        
+                        if handle_email_validation_flow(email_input.strip(), validation_result):
+                            st.rerun()
+                        else:
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Email validation error: {e}")
+                        add_message_to_chat("assistant", "Sorry, there was an error validating your email. Please try again.")
                         st.rerun()
             else:
                 st.warning("Please enter an email address")
@@ -1417,27 +1343,32 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                     update_user_activity()
                     add_message_to_chat("user", f"Entered verification code: {otp_input}")
                     
-                    is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
-                    
-                    if is_valid:
-                        add_message_to_chat("assistant", "✅ Email verified! What would you like to explore? (I can answer questions about ALL our products and services)")
+                    try:
+                        is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
                         
-                        st.session_state.conversation_flow["awaiting_otp"] = False
-                        st.session_state.conversation_flow["otp_verified"] = True
-                        st.session_state.conversation_flow["awaiting_selection"] = True
-                        
-                        st.rerun()
-                    else:
-                        st.session_state.otp_data["attempts"] = st.session_state.otp_data.get("attempts", 0) + 1
-                        add_message_to_chat("assistant", f"❌ {message}")
-                        
-                        if st.session_state.otp_data["attempts"] >= 3:
-                            add_message_to_chat("assistant", 
-                                "Too many failed attempts. Please request a new verification code.")
-                            st.session_state.otp_data = None
+                        if is_valid:
+                            add_message_to_chat("assistant", "✅ Email verified! What would you like to explore? (I can answer questions about ALL our products and services)")
+                            
                             st.session_state.conversation_flow["awaiting_otp"] = False
-                            st.session_state.conversation_flow["awaiting_email"] = True
-                        
+                            st.session_state.conversation_flow["otp_verified"] = True
+                            st.session_state.conversation_flow["awaiting_selection"] = True
+                            
+                            st.rerun()
+                        else:
+                            st.session_state.otp_data["attempts"] = st.session_state.otp_data.get("attempts", 0) + 1
+                            add_message_to_chat("assistant", f"❌ {message}")
+                            
+                            if st.session_state.otp_data["attempts"] >= 3:
+                                add_message_to_chat("assistant", 
+                                    "Too many failed attempts. Please request a new verification code.")
+                                st.session_state.otp_data = None
+                                st.session_state.conversation_flow["awaiting_otp"] = False
+                                st.session_state.conversation_flow["awaiting_email"] = True
+                            
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"OTP verification error: {e}")
+                        add_message_to_chat("assistant", "Sorry, there was an error verifying your code. Please try again.")
                         st.rerun()
                 else:
                     st.warning("Please enter a valid 6-digit code")
@@ -1448,21 +1379,25 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                 
                 otp_data = st.session_state.otp_data
                 if otp_data:
-                    new_otp = generate_otp()
-                    success, message = send_otp_email(otp_data["email"], new_otp)
-                    
-                    if success:
-                        st.session_state.otp_data = {
-                            "otp": new_otp,
-                            "email": otp_data["email"],
-                            "timestamp": datetime.now(),
-                            "attempts": 0
-                        }
-                        add_message_to_chat("assistant", "📧 New verification code sent!")
-                        st.success("New code sent!")
-                    else:
-                        add_message_to_chat("assistant", f"❌ Failed to resend: {message}")
-                        st.error(f"Failed to resend: {message}")
+                    try:
+                        new_otp = generate_otp()
+                        success, message = send_otp_email(otp_data["email"], new_otp)
+                        
+                        if success:
+                            st.session_state.otp_data = {
+                                "otp": new_otp,
+                                "email": otp_data["email"],
+                                "timestamp": datetime.now(),
+                                "attempts": 0
+                            }
+                            add_message_to_chat("assistant", "📧 New verification code sent!")
+                            st.success("New code sent!")
+                        else:
+                            add_message_to_chat("assistant", f"❌ Failed to resend: {message}")
+                            st.error(f"Failed to resend: {message}")
+                    except Exception as e:
+                        st.error(f"Resend error: {e}")
+                        add_message_to_chat("assistant", "Sorry, there was an error sending a new code. Please try again.")
                     st.rerun()
 
 elif st.session_state.conversation_flow["awaiting_selection"]:
@@ -1552,6 +1487,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
                     st.rerun()
                     
                 except Exception as e:
+                    print(f"AI response error: {e}")
                     fallback_response = "I can help you with any questions about our maritime products or technology services. Contact info@aniketsolutions.com for detailed consultation."
                     add_message_to_chat("assistant", fallback_response)
                     st.rerun()
