@@ -15,49 +15,28 @@ import boto3
 from botocore.exceptions import ClientError
 import random
 import string
-import uuid
-import pytz
-from typing import Optional, Dict, List, Any
-import pandas as pd
 
 # Load environment variables from .env file
 load_dotenv()
 
 # Configure OpenAI API Key from environment variable
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# AWS Configuration
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID") or st.secrets.get("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY") or st.secrets.get("AWS_SECRET_ACCESS_KEY")
-AWS_REGION = os.getenv("AWS_REGION") or st.secrets.get("AWS_REGION", "us-east-1")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME") or st.secrets.get("S3_BUCKET_NAME", "anisol-chatbot-data")
-SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL") or st.secrets.get("SES_FROM_EMAIL")
-VERIFICATION_BASE_URL = os.getenv("VERIFICATION_BASE_URL") or st.secrets.get("VERIFICATION_BASE_URL", "http://localhost:8501")
-
-# Email Report Configuration
-NOTIFICATION_EMAIL = os.getenv("NOTIFICATION_EMAIL") or st.secrets.get("NOTIFICATION_EMAIL", "as@aniketsolutions.com.sg")
-
-# Timezone Configuration
-COMPANY_TIMEZONE = pytz.timezone('Asia/Singapore')
-UTC = pytz.UTC
+# AWS SES configuration (add these to your .env file)
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")  # Default to us-east-1
+SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL")  # Optional - will auto-detect if not specified
+VERIFICATION_BASE_URL = os.getenv("VERIFICATION_BASE_URL", "http://localhost:8501")  # Your app URL
 
 # Initialize OpenAI client
 client = None
 if OPENAI_API_KEY:
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Initialize AWS clients
-s3_client = None
+# Initialize AWS SES client
 ses_client = None
-
 if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        region_name=AWS_REGION
-    )
-    
     ses_client = boto3.client(
         'ses',
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -65,340 +44,851 @@ if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
         region_name=AWS_REGION
     )
 
-# =============================================================================
-# FIXED S3 STORAGE FUNCTION - NON-BLOCKING
-# =============================================================================
-
-def save_conversation_to_s3(conversation_data):
-    """Simple function to save conversation transcript to S3 - with error handling"""
-    try:
-        if not s3_client:
-            print("S3 client not configured")
-            return False
-        
-        # Ensure bucket exists
-        bucket_name = S3_BUCKET_NAME
-        try:
-            s3_client.head_bucket(Bucket=bucket_name)
-        except ClientError as e:
-            error_code = int(e.response['Error']['Code'])
-            if error_code == 404:
-                # Create bucket if it doesn't exist
-                try:
-                    if AWS_REGION == 'us-east-1':
-                        s3_client.create_bucket(Bucket=bucket_name)
-                    else:
-                        s3_client.create_bucket(
-                            Bucket=bucket_name,
-                            CreateBucketConfiguration={'LocationConstraint': AWS_REGION}
-                        )
-                except Exception as create_error:
-                    print(f"Failed to create bucket: {create_error}")
-                    return False
-        
-        # Create S3 key with date structure
-        current_time = datetime.now(UTC)
-        date_str = current_time.strftime('%Y/%m/%d')
-        conversation_id = conversation_data.get('conversation_id', str(uuid.uuid4()))
-        s3_key = f"conversations/{date_str}/{conversation_id}.json"
-        
-        # Convert conversation data to JSON
-        json_data = json.dumps(conversation_data, default=str, indent=2)
-        
-        # Upload to S3
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=s3_key,
-            Body=json_data,
-            ContentType='application/json',
-            ServerSideEncryption='AES256'
-        )
-        
-        print(f"✅ Conversation saved to S3: {s3_key}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ S3 save error: {e}")
-        return False
+# Configure the page
+st.set_page_config(
+    page_title="Aniket Solutions - AI Assistant",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 # =============================================================================
-# FIXED EMAIL FUNCTION - NON-BLOCKING
+# ADVANCED KEEP-ALIVE SYSTEM TO PREVENT STREAMLIT SLEEPING
 # =============================================================================
 
-def email_conversation_transcript(conversation_data):
-    """Simple function to email conversation transcript - with error handling"""
-    try:
-        if not ses_client:
-            print("SES client not configured")
-            return False
+def keep_alive_system():
+    """Advanced keep-alive system to prevent Streamlit app from sleeping"""
+    
+    # Initialize session state for activity tracking
+    if "last_activity" not in st.session_state:
+        st.session_state.last_activity = datetime.now()
+        st.session_state.app_start_time = datetime.now()
+        st.session_state.interaction_count = 0
+        st.session_state.last_message_count = 0
+        st.session_state.heartbeat_count = 0
+    
+    # Update activity timestamp on any interaction
+    current_time = datetime.now()
+    
+    # Track interactions (messages, button clicks, etc.)
+    current_message_count = len(st.session_state.get("messages", []))
+    if current_message_count > st.session_state.last_message_count:
+        st.session_state.last_activity = current_time
+        st.session_state.interaction_count += 1
+        st.session_state.last_message_count = current_message_count
+    
+    # Auto-refresh logic - refresh if inactive for 8 minutes
+    time_since_activity = current_time - st.session_state.last_activity
+    uptime = current_time - st.session_state.app_start_time
+    
+    # Refresh if inactive too long (but not immediately on first load)
+    if time_since_activity.total_seconds() > 480 and uptime.total_seconds() > 60:  # 8 minutes
+        st.session_state.last_activity = current_time
+        st.session_state.heartbeat_count += 1
+        st.rerun()
+
+def add_javascript_keepalive():
+    """Add comprehensive JavaScript keep-alive system"""
+    js_code = """
+    <script>
+    // Advanced Keep-alive system for Streamlit
+    let keepAliveInterval;
+    let activityTimeout;
+    let heartbeatCount = 0;
+    
+    function logActivity(action) {
+        console.log(`Keep-alive: ${action} at ${new Date().toLocaleTimeString()}`);
+    }
+    
+    function sendHeartbeat() {
+        fetch(window.location.href, {
+            method: 'HEAD',
+            cache: 'no-cache'
+        }).then(() => {
+            heartbeatCount++;
+            logActivity(`Heartbeat #${heartbeatCount} sent`);
+        }).catch(err => {
+            console.warn('Heartbeat failed:', err);
+        });
+    }
+    
+    function resetActivity() {
+        clearTimeout(activityTimeout);
+        logActivity('User activity detected');
         
-        # Get sender email
-        sender_email = SES_FROM_EMAIL
-        if not sender_email:
-            try:
-                response = ses_client.list_verified_email_addresses()
-                verified_emails = response.get('VerifiedEmailAddresses', [])
-                if verified_emails:
-                    sender_email = verified_emails[0]
-                else:
-                    print("No verified email addresses found")
-                    return False
-            except Exception as e:
-                print(f"Error getting verified emails: {e}")
-                return False
-        
-        # Extract conversation details
-        user_email = conversation_data.get('user_email', 'Unknown')
-        start_time = conversation_data.get('start_time_singapore', 'Unknown')
-        messages = conversation_data.get('messages', [])
-        conversation_id = conversation_data.get('conversation_id', 'Unknown')
-        
-        # Calculate duration
-        try:
-            start_dt = datetime.fromisoformat(conversation_data.get('start_time_utc', '').replace('Z', ''))
-            end_dt = datetime.fromisoformat(conversation_data.get('end_time_utc', '').replace('Z', ''))
-            duration_seconds = int((end_dt - start_dt).total_seconds())
-            duration = f"{duration_seconds // 60}m {duration_seconds % 60}s" if duration_seconds >= 60 else f"{duration_seconds}s"
-        except:
-            duration = "Unknown"
-        
-        # Create email subject
-        subject = f"AniSol Conversation - {user_email} - {start_time.split('T')[0] if 'T' in start_time else start_time}"
-        
-        # Create HTML email body
-        html_body = create_html_email(user_email, start_time, duration, len(messages), conversation_id, messages)
-        
-        # Create plain text email body
-        text_body = create_text_email(user_email, start_time, duration, len(messages), conversation_id, messages)
-        
-        # Send email
-        response = ses_client.send_email(
-            Source=sender_email,
-            Destination={'ToAddresses': [NOTIFICATION_EMAIL]},
-            Message={
-                'Subject': {'Data': subject, 'Charset': 'UTF-8'},
-                'Body': {
-                    'Html': {'Data': html_body, 'Charset': 'UTF-8'},
-                    'Text': {'Data': text_body, 'Charset': 'UTF-8'}
+        // Send heartbeat after 7 minutes of inactivity
+        activityTimeout = setTimeout(function() {
+            logActivity('Inactivity timeout - sending heartbeat');
+            sendHeartbeat();
+        }, 420000); // 7 minutes
+    }
+    
+    // Monitor user interactions
+    const events = ['click', 'keypress', 'scroll', 'mousemove', 'touchstart'];
+    events.forEach(event => {
+        document.addEventListener(event, resetActivity, { passive: true });
+    });
+    
+    // Initial setup
+    resetActivity();
+    
+    // Regular heartbeat every 4 minutes
+    keepAliveInterval = setInterval(function() {
+        sendHeartbeat();
+    }, 240000); // 4 minutes
+    
+    // Page visibility change handling
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            logActivity('Page became visible');
+            sendHeartbeat();
+        }
+    });
+    
+    // Window focus/blur handling
+    window.addEventListener('focus', function() {
+        logActivity('Window focused');
+        resetActivity();
+    });
+    
+    logActivity('Keep-alive system initialized');
+    sendHeartbeat(); // Initial heartbeat
+    </script>
+    """
+    st.markdown(js_code, unsafe_allow_html=True)
+
+def add_auto_refresh():
+    """Add emergency auto-refresh to prevent long-term sleeping"""
+    refresh_code = """
+    <script>
+    // Emergency auto-refresh after 20 minutes
+    setTimeout(function(){
+        console.log('Emergency auto-refresh activated to prevent sleep...');
+        // Show user a brief message before refresh
+        if (confirm('App refreshing to maintain connection. Continue?')) {
+            window.location.reload(1);
+        } else {
+            window.location.reload(1); // Refresh anyway after 5 seconds
+        }
+    }, 1200000); // 20 minutes
+    </script>
+    """
+    st.markdown(refresh_code, unsafe_allow_html=True)
+
+def add_service_worker():
+    """Add service worker for background keep-alive"""
+    sw_code = """
+    <script>
+    // Register service worker for background activity
+    if ('serviceWorker' in navigator) {
+        const swCode = `
+            self.addEventListener('message', function(event) {
+                if (event.data && event.data.type === 'SKIP_WAITING') {
+                    self.skipWaiting();
                 }
-            }
-        )
+            });
+            
+            setInterval(() => {
+                fetch('/', {method: 'HEAD'}).catch(() => {});
+            }, 300000); // 5 minutes
+        `;
         
-        print(f"✅ Email sent successfully to {NOTIFICATION_EMAIL}")
-        return True
+        const blob = new Blob([swCode], {type: 'application/javascript'});
+        const swUrl = URL.createObjectURL(blob);
+        
+        navigator.serviceWorker.register(swUrl).then(function(registration) {
+            console.log('Keep-alive service worker registered');
+        }).catch(function(error) {
+            console.log('Service worker registration failed:', error);
+        });
+    }
+    </script>
+    """
+    st.markdown(sw_code, unsafe_allow_html=True)
+
+# Avatar Configuration
+ALEX_AVATAR_URL = "https://raw.githubusercontent.com/AShirsat96/WebsiteChatbot/main/Alex_AI_Avatar.png"
+USER_AVATAR_URL = "https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=4f46e5&fontSize=40"
+
+# Alternative avatar options (you can change these URLs)
+ALTERNATIVE_AVATARS = {
+    "professional": "https://api.dicebear.com/7.x/avataaars/svg?seed=Professional&backgroundColor=e0e7ff&clothesColor=3730a3&eyebrowType=default&eyeType=default&facialHairType=default&hairColor=brown&mouthType=smile&skinColor=light&topType=shortHairShortFlat",
+    "friendly": "https://api.dicebear.com/7.x/avataaars/svg?seed=Friendly&backgroundColor=dcfce7&clothesColor=166534&eyebrowType=default&eyeType=happy&facialHairType=default&hairColor=black&mouthType=smile&skinColor=light&topType=shortHairDreads01",
+    "tech": "https://api.dicebear.com/7.x/avataaars/svg?seed=Tech&backgroundColor=f3f4f6&clothesColor=1f2937&eyebrowType=default&eyeType=default&facialHairType=default&hairColor=brown&mouthType=smile&skinColor=light&topType=shortHairShortCurly",
+    "support_agent": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjZjBmOWZmIiByeD0iMTAwIi8+CjwhLS0gSGVhZCAtLT4KPGNpcmNsZSBjeD0iMTAwIiBjeT0iODAiIHI9IjM1IiBmaWxsPSIjZmJiZjI0Ii8+CjwhLS0gSGFpciAtLT4KPHBhdGggZD0ibTY1IDYwYzAtMjAgMTUtMzUgMzUtMzVzMzUgMTUgMzUgMzVjMCAxMC01IDIwLTE1IDI1aC00MGMtMTAtNS0xNS0xNS0xNS0yNVoiIGZpbGw9IiM0YTQ3NGQiLz4KPCEtLSBHeWVzIC0tPgo8Y2lyY2xlIGN4PSI5MCIgY3k9Ijc1IiByPSI0IiBmaWxsPSIjMDAwIi8+CjxjaXJjbGUgY3g9IjExMCIgY3k9Ijc1IiByPSI0IiBmaWxsPSIjMDAwIi8+CjwhLS0gR2xhc3NlcyAtLT4KPHJlY3QgeD0iODAiIHk9IjY4IiB3aWR0aD0iNDAiIGhlaWdodD0iMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwMCIgc3Ryb2tlLXdpZHRoPSIyIiByeD0iNSIvPgo8IS0tIE5vc2UgLS0+CjxjaXJjbGUgY3g9IjEwMCIgY3k9Ijg1IiByPSIyIiBmaWxsPSIjZDY5ZTJlIi8+CjwhLS0gTW91dGggLS0+CjxwYXRoIGQ9Im05MCA5NWMwIDUgNSAxMCAxMCAxMHMxMC01IDEwLTEwIiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMiIgZmlsbD0ibm9uZSIvPgo8IS0tIEhlYWRzZXQgLS0+CjxwYXRoIGQ9Im03MCA2NWMtMTAgMC0xNSA1LTE1IDE1czUgMTUgMTUgMTVoNjBjMTAgMCAxNS01IDE1LTE1cy01LTE1LTE1LTE1IiBzdHJva2U9IiMzNzM3MzciIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIvPgo8Y2lyY2xlIGN4PSI3MCIgY3k9IjgwIiByPSI4IiBmaWxsPSIjMzczNzM3Ii8+CjxjaXJjbGUgY3g9IjEzMCIgY3k9IjgwIiByPSI4IiBmaWxsPSIjMzczNzM3Ii8+CjwhLS0gTWljIC0tPgo8bGluZSB4MT0iMTMwIiB5MT0iODAiIHgyPSIxMjAiIHkyPSIxMDAiIHN0cm9rZT0iIzM3MzczNyIgc3Ryb2tlLXdpZHRoPSIyIi8+CjxyZWN0IHg9IjExNSIgeT0iMTAwIiB3aWR0aD0iMTAiIGhlaWdodD0iOCIgZmlsbD0iIzM3MzczNyIgcng9IjIiLz4KPCEtLSBCb2R5IC0tPgo8cmVjdCB4PSI3NSIgeT0iMTE1IiB3aWR0aD0iNTAiIGhlaWdodD0iNjAiIGZpbGw9IiMyZDM3NDgiIHJ4PSI1Ii8+CjxyZWN0IHg9IjgwIiB5PSIxMjAiIHdpZHRoPSI0MCIgaGVpZ2h0PSIzMCIgZmlsbD0iIzM5OGVkYiIgcng9IjMiLz4KPC9zdmc+",
+    "custom": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face&auto=format"
+}
+
+COMPANY_URL = "https://www.aniketsolutions.com/aspl/index.htm"
+COMPANY_INFO = """
+Aniket Solutions - TOTAL SOLUTIONS PROVIDER
+
+About Aniket Solutions:
+- Commenced operations in February 2004 in Singapore
+- Privately held by Technopreneurs with decades of business experience
+- Grown quickly providing excellent services to customers worldwide
+- Work with customers in different geographical locations including USA, UK, Cyprus, Greece, India, Japan, Singapore and Hong Kong
+- Ability to understand diverse work cultures and provide cost effective and efficient solutions
+- Specializes in Marine IOT solutions (Coming soon - February 2021)
+- Total solutions provider for various technology needs
+
+Services and Expertise:
+- Technology solutions across multiple domains
+- Cost-effective and efficient solutions
+- Global service delivery
+- Understanding of diverse work cultures
+- Marine IoT solutions development
+"""
+
+# =============================================================================
+# COMPREHENSIVE KEYWORD MAPPING FOR PRODUCTS AND SERVICES
+# =============================================================================
+
+INVENTORY_KEYWORDS = [
+    # Primary terms
+    'inventory', 'stock', 'spare', 'spares', 'consumable', 'consumables', 'stores', 'rob',
+    'parts', 'supplies', 'materials', 'warehouse', 'storage', 'stockroom',
+    
+    # Maritime-specific
+    'ship stores', 'vessel inventory', 'marine supplies', 'deck stores', 'engine room stores',
+    'provision stores', 'slop chest', 'bond stores', 'ship chandler', 'chandlery',
+    
+    # Operational terms
+    'reorder', 'requisition', 'shortage', 'stock level', 'stock control', 'asset tracking',
+    'store keeping', 'storekeeping', 'procurement requisition', 'stock management',
+    'remaining onboard', 'onboard inventory', 'ship inventory', 'fleet inventory',
+    
+    # Technical terms
+    'component mapping', 'spare parts management', 'consumable tracking', 'stock alerts',
+    'inventory optimization', 'stock rotation', 'expiry tracking', 'shelf life',
+    'inventory audit', 'stock count', 'cycle counting', 'stock reconciliation'
+]
+
+PAYROLL_KEYWORDS = [
+    # Primary terms
+    'payroll', 'wages', 'salary', 'cash', 'crew payment', 'master cash', 'pay', 
+    'compensation', 'finance', 'money', 'advance', 'payment',
+    
+    # Maritime-specific
+    'crew wages', 'seafarer pay', 'maritime payroll', 'ship payroll', 'vessel payroll',
+    'portage bill', 'crew account', 'seaman wages', 'mariner pay', 'sailor wages',
+    'crew compensation', 'maritime salary', 'ship crew pay',
+    
+    # Financial terms
+    'overtime', 'bonus', 'allowance', 'deduction', 'allotment', 'tax', 'contribution',
+    'salary advance', 'cash advance', 'loan', 'fine', 'penalty', 'reimbursement',
+    'petty cash', 'cash management', 'crew cash', 'onboard cash',
+    
+    # Currency & banking
+    'multi currency', 'exchange rate', 'currency conversion', 'foreign exchange',
+    'bank transfer', 'wire transfer', 'remittance', 'crew banking',
+    
+    # Compliance
+    'mla compliance', 'flag state requirements', 'crew contract', 'employment agreement'
+]
+
+CREWING_KEYWORDS = [
+    # Primary terms
+    'crew', 'crewing', 'staff', 'personnel', 'maritime crew', 'seafarer', 'seafarers',
+    'manning', 'human resources', 'hr', 'employee', 'employees', 'crew management',
+    
+    # Maritime roles
+    'captain', 'master', 'chief officer', 'engineer', 'bosun', 'seaman', 'able seaman',
+    'ordinary seaman', 'deck crew', 'engine crew', 'galley crew', 'steward', 'cook',
+    'chief engineer', 'second engineer', 'third engineer', 'oiler', 'wiper', 'fitter',
+    
+    # Crew operations
+    'crew scheduling', 'crew rotation', 'crew deployment', 'crew planning', 'shift management',
+    'watch keeping', 'duty roster', 'crew roster', 'manning schedule', 'crew assignment',
+    'embarkation', 'disembarkation', 'sign on', 'sign off', 'crew change',
+    
+    # Documentation & compliance
+    'crew documents', 'certificates', 'endorsements', 'stcw', 'mlc', 'flag state',
+    'medical certificate', 'passport', 'visa', 'seamans book', 'discharge book',
+    'coc', 'certificate of competency', 'endorsement', 'training records',
+    
+    # Performance & development
+    'crew appraisal', 'performance review', 'competency assessment', 'training',
+    'crew evaluation', 'performance management', 'skill assessment', 'crew development',
+    'crew performance', 'crew rating', 'crew feedback'
+]
+
+TMS_KEYWORDS = [
+    # Primary terms
+    'tms', 'maintenance', 'technical', 'planned maintenance', 'pms', 'repair', 'repairs',
+    'equipment', 'machinery', 'technical management', 'maintenance management',
+    
+    # Maintenance types
+    'preventive maintenance', 'corrective maintenance', 'predictive maintenance',
+    'condition based maintenance', 'routine maintenance', 'scheduled maintenance',
+    'unplanned maintenance', 'emergency repair', 'breakdown', 'overhaul',
+    
+    # Maritime equipment
+    'engine', 'main engine', 'auxiliary engine', 'generator', 'pump', 'compressor',
+    'boiler', 'heat exchanger', 'separator', 'purifier', 'winch', 'crane', 'hatch cover',
+    'steering gear', 'propeller', 'shaft', 'bearing', 'valve', 'pipe', 'tank',
+    
+    # Inspections & surveys (REMOVED "dry dock" from here)
+    'inspection', 'survey', 'class survey', 'intermediate survey',
+    'annual survey', 'special survey', 'psc', 'port state control', 'flag state inspection',
+    'vetting inspection', 'internal audit', 'safety inspection',
+    
+    # Certificates & compliance
+    'certificate', 'class certificate', 'safety certificate', 'statutory certificate',
+    'renewal', 'extension', 'endorsement', 'survey due', 'certificate expiry',
+    
+    # Work orders & documentation
+    'work order', 'job card', 'maintenance report', 'defect', 'non conformity',
+    'finding', 'observation', 'maintenance log', 'engine log', 'technical log',
+    
+    # Technical systems
+    'condition monitoring', 'vibration monitoring', 'oil analysis', 'performance monitoring',
+    'alarm system', 'automation', 'control system', 'instrumentation'
+]
+
+PROCUREMENT_KEYWORDS = [
+    # Primary terms
+    'procurement', 'purchasing', 'supplier', 'vendor', 'po', 'purchase order',
+    'buying', 'sourcing', 'rfq', 'request for quotation', 'quotation', 'quote',
+    
+    # Maritime procurement
+    'ship supply', 'vessel supply', 'marine supply', 'port supply', 'ship chandler',
+    'bunker', 'fuel', 'lubricant', 'provisions', 'fresh water', 'technical supply',
+    
+    # Procurement processes
+    'requisition', 'purchase requisition', 'approval', 'authorization', 'budget approval',
+    'vendor selection', 'supplier evaluation', 'price comparison', 'negotiation',
+    'contract', 'framework agreement', 'blanket order', 'spot purchase',
+    
+    # Supply chain
+    'delivery', 'shipment', 'logistics', 'freight', 'customs', 'port agent',
+    'local agent', 'emergency supply', 'urgent supply', 'stock replenishment',
+    
+    # Vendor management
+    'vendor management', 'supplier management', 'vendor assessment', 'supplier audit',
+    'vendor performance', 'supplier rating', 'approved vendor list', 'blacklist',
+    
+    # Integration platforms
+    'shipserv', 'marine marketplace', 'e-procurement', 'digital procurement',
+    'procurement portal', 'supplier portal', 'catalog', 'price list',
+    
+    # Financial terms
+    'invoice', 'payment', 'accounts payable', 'cost control', 'budget management',
+    'cost analysis', 'spend analysis', 'savings', 'cost reduction'
+]
+
+CUSTOM_DEVELOPMENT_KEYWORDS = [
+    # Primary terms
+    'custom', 'development', 'software', 'application', 'web app', 'webapp',
+    'bespoke', 'tailored', 'build', 'create', 'develop', 'programming',
+    
+    # Development types
+    'custom software', 'enterprise software', 'business application', 'web application',
+    'desktop application', 'cloud application', 'saas', 'software as a service',
+    'enterprise solution', 'business solution', 'digital solution',
+    
+    # Technologies
+    'react', 'angular', 'vue', 'node.js', 'python', 'java', 'dot net', '.net',
+    'javascript', 'typescript', 'php', 'ruby', 'c#', 'mysql', 'postgresql',
+    'mongodb', 'oracle', 'sql server', 'database', 'api', 'rest api', 'graphql',
+    
+    # Project types
+    'legacy modernization', 'system upgrade', 'digital transformation',
+    'business automation', 'workflow automation', 'process automation',
+    'enterprise integration', 'system integration', 'platform development',
+    
+    # Industries
+    'maritime software', 'shipping software', 'fleet management software',
+    'healthcare software', 'financial software', 'manufacturing software',
+    'logistics software', 'supply chain software', 'erp', 'crm', 'hrms'
+]
+
+MOBILE_KEYWORDS = [
+    # Primary terms
+    'mobile', 'app', 'mobile app', 'ios', 'android', 'smartphone', 'tablet',
+    'pwa', 'progressive web app', 'react native', 'flutter', 'mobile development',
+    
+    # Mobile platforms
+    'iphone', 'ipad', 'apple', 'google play', 'app store', 'play store',
+    'mobile application', 'native app', 'hybrid app', 'cross platform',
+    
+    # Mobile features
+    'offline app', 'push notification', 'gps', 'location', 'camera', 'scanner',
+    'qr code', 'barcode', 'biometric', 'fingerprint', 'face id', 'touch id',
+    'mobile payments', 'in app purchase', 'mobile commerce', 'm-commerce',
+    
+    # Business mobile apps
+    'field service app', 'sales app', 'crm app', 'inventory app', 'tracking app',
+    'delivery app', 'logistics app', 'maintenance app', 'inspection app',
+    'workforce app', 'employee app', 'customer app', 'mobile portal',
+    
+    # Mobile technologies
+    'swift', 'kotlin', 'xamarin', 'cordova', 'phonegap', 'ionic', 'unity'
+]
+
+AI_ML_KEYWORDS = [
+    # Primary terms
+    'ai', 'artificial intelligence', 'machine learning', 'ml', 'deep learning',
+    'neural', 'neural network', 'nlp', 'natural language processing',
+    'computer vision', 'automation', 'intelligent automation',
+    
+    # AI applications
+    'chatbot', 'virtual assistant', 'conversational ai', 'voice assistant',
+    'recommendation engine', 'recommendation system', 'predictive analytics',
+    'fraud detection', 'anomaly detection', 'sentiment analysis', 'text analysis',
+    
+    # ML techniques
+    'supervised learning', 'unsupervised learning', 'reinforcement learning',
+    'classification', 'regression', 'clustering', 'decision tree', 'random forest',
+    'support vector machine', 'svm', 'neural networks', 'cnn', 'rnn', 'lstm',
+    
+    # AI technologies
+    'tensorflow', 'pytorch', 'keras', 'scikit-learn', 'opencv', 'spacy', 'nltk',
+    'hugging face', 'openai', 'gpt', 'bert', 'transformer', 'generative ai',
+    
+    # Business AI
+    'business intelligence', 'predictive maintenance', 'demand forecasting',
+    'price optimization', 'customer segmentation', 'lead scoring', 'churn prediction',
+    'quality control', 'defect detection', 'process optimization', 'smart automation',
+    
+    # Industry AI
+    'ai for maritime', 'ai for shipping', 'ai for logistics', 'ai for healthcare',
+    'ai for finance', 'ai for manufacturing', 'ai for retail', 'fintech ai'
+]
+
+DATA_SERVICES_KEYWORDS = [
+    # Primary terms
+    'data', 'database', 'migration', 'analytics', 'reporting', 'etl', 'elt',
+    'warehouse', 'data warehouse', 'data lake', 'bi', 'business intelligence',
+    
+    # Data operations
+    'data migration', 'database migration', 'data transfer', 'data conversion',
+    'data transformation', 'data integration', 'data synchronization',
+    'data backup', 'data recovery', 'disaster recovery', 'data archiving',
+    
+    # Analytics & BI
+    'dashboard', 'report', 'kpi', 'metrics', 'data visualization', 'charts',
+    'graphs', 'tableau', 'power bi', 'qlik', 'looker', 'excel', 'pivot table',
+    'data analysis', 'statistical analysis', 'trend analysis', 'forecasting',
+    
+    # Database technologies
+    'sql', 'nosql', 'mysql', 'postgresql', 'oracle', 'sql server', 'mongodb',
+    'cassandra', 'redis', 'elasticsearch', 'hadoop', 'spark', 'kafka',
+    
+    # Cloud data
+    'aws', 'azure', 'google cloud', 'cloud migration', 'cloud database',
+    's3', 'redshift', 'bigquery', 'azure sql', 'cosmos db', 'dynamodb',
+    
+    # Data governance
+    'data quality', 'data cleansing', 'data validation', 'master data',
+    'data governance', 'data lineage', 'metadata', 'data catalog',
+    'gdpr', 'data privacy', 'data security', 'compliance'
+]
+
+INTEGRATION_KEYWORDS = [
+    # Primary terms
+    'integration', 'api', 'connect', 'sync', 'synchronization', 'system integration',
+    'erp', 'crm', 'middleware', 'interface', 'connector', 'bridge',
+    
+    # Integration types
+    'system integration', 'application integration', 'data integration',
+    'enterprise integration', 'cloud integration', 'hybrid integration',
+    'real time integration', 'batch integration', 'event driven integration',
+    
+    # Integration technologies
+    'rest', 'soap', 'graphql', 'webhook', 'api gateway', 'message queue',
+    'kafka', 'rabbitmq', 'azure service bus', 'aws sqs', 'mule', 'tibco',
+    'logic apps', 'azure logic apps', 'aws step functions', 'zapier',
+    
+    # Business systems
+    'erp integration', 'crm integration', 'sap', 'salesforce', 'dynamics',
+    'oracle', 'netsuite', 'quickbooks', 'sage', 'workday', 'successfactors',
+    'sharepoint', 'office 365', 'google workspace', 'slack integration',
+    
+    # E-commerce integration
+    'shopify', 'magento', 'woocommerce', 'amazon', 'ebay', 'payment gateway',
+    'stripe', 'paypal', 'square', 'shipping integration', 'fedex', 'ups', 'dhl',
+    
+    # Data sync
+    'two way sync', 'one way sync', 'real time sync', 'batch sync',
+    'data synchronization', 'master data sync', 'customer sync', 'product sync'
+]
+
+CHATBOT_KEYWORDS = [
+    # Primary terms
+    'chatbot', 'chat bot', 'virtual assistant', 'customer service', 'conversational ai',
+    'support bot', 'chat', 'assistant', 'ai assistant', 'digital assistant',
+    
+    # Customer service terms
+    'customer support', 'help desk', 'support ticket', 'live chat', 'customer care',
+    'customer experience', 'cx', 'customer engagement', 'self service', 'faq bot',
+    
+    # Communication channels
+    'website chat', 'web chat', 'whatsapp bot', 'facebook messenger', 'telegram bot',
+    'slack bot', 'discord bot', 'sms bot', 'voice bot', 'phone bot', 'ivr',
+    
+    # Chatbot features
+    'natural language', 'nlp', 'intent recognition', 'entity extraction',
+    'conversation flow', 'dialogue management', 'context awareness', 'memory',
+    'multilingual', 'sentiment analysis', 'escalation', 'handoff', 'live agent',
+    
+    # Business applications
+    'lead generation', 'lead qualification', 'appointment booking', 'scheduling',
+    'order taking', 'product recommendation', 'troubleshooting', 'onboarding',
+    'survey bot', 'feedback collection', 'hr bot', 'it support bot',
+    
+    # Chatbot platforms
+    'dialogflow', 'azure bot framework', 'amazon lex', 'rasa', 'botframework',
+    'watson assistant', 'chatfuel', 'manychat', 'drift', 'intercom', 'zendesk'
+]
+
+# =============================================================================
+# COMPREHENSIVE KEYWORD MAPPING
+# =============================================================================
+
+COMPREHENSIVE_KEYWORD_MAPPING = {
+    'inventory': INVENTORY_KEYWORDS,
+    'payroll': PAYROLL_KEYWORDS,
+    'crewing': CREWING_KEYWORDS,
+    'tms': TMS_KEYWORDS,
+    'procurement': PROCUREMENT_KEYWORDS,
+    'custom_development': CUSTOM_DEVELOPMENT_KEYWORDS,
+    'mobile': MOBILE_KEYWORDS,
+    'ai_ml': AI_ML_KEYWORDS,
+    'data_services': DATA_SERVICES_KEYWORDS,
+    'integration': INTEGRATION_KEYWORDS,
+    'chatbot': CHATBOT_KEYWORDS
+}
+
+# =============================================================================
+# ENHANCED KEYWORD MATCHING FUNCTION
+# =============================================================================
+
+def get_best_match_category(query):
+    """
+    Enhanced keyword matching that finds the best category match for a query
+    Returns tuple: (category, confidence_score, matched_keywords)
+    """
+    query_lower = query.lower().strip()
+    query_words = set(query_lower.split())
+    
+    matches = {}
+    
+    for category, keywords in COMPREHENSIVE_KEYWORD_MAPPING.items():
+        matched_keywords = []
+        score = 0
+        
+        for keyword in keywords:
+            if keyword in query_lower:
+                matched_keywords.append(keyword)
+                # Give higher score for exact phrase matches
+                if ' ' in keyword:
+                    score += 5  # Increased from 3 to 5 for multi-word phrases
+                else:
+                    score += 2  # Increased from 1 to 2 for single words
+        
+        # Additional scoring for word matches
+        keyword_words = set()
+        for keyword in keywords:
+            keyword_words.update(keyword.split())
+        
+        common_words = query_words.intersection(keyword_words)
+        score += len(common_words) * 0.5  # Partial score for individual word matches
+        
+        # BONUS: If query is very short (1-2 words) and matches a primary keyword exactly, boost score
+        if len(query_words) <= 2:
+            primary_keywords = keywords[:10]  # First 10 keywords are usually primary terms
+            for keyword in primary_keywords:
+                if keyword == query_lower:  # Exact match
+                    score += 5  # Big bonus for exact primary keyword match
+                elif keyword in query_lower and len(keyword) > 3:  # Close match for longer keywords
+                    score += 3
+        
+        if score > 0:
+            matches[category] = {
+                'score': score,
+                'matched_keywords': matched_keywords,
+                'confidence': min(score / 8, 1.0)  # Adjusted denominator from 10 to 8 for higher confidence
+            }
+    
+    if not matches:
+        return None, 0, []
+    
+    # Get the best match
+    best_category = max(matches.keys(), key=lambda k: matches[k]['score'])
+    best_match = matches[best_category]
+    
+    return best_category, best_match['confidence'], best_match['matched_keywords']
+
+# =============================================================================
+# ENHANCED PRODUCT AND SERVICE RESPONSE FUNCTIONS
+# =============================================================================
+
+def get_product_response_enhanced(query):
+    """Enhanced product response using comprehensive keyword matching"""
+    
+    # Get the best matching category
+    category, confidence, matched_keywords = get_best_match_category(query)
+    
+    # If we have a good match (confidence > 0.25) and it's a product category
+    if confidence > 0.25 and category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
+        
+        if category == 'inventory':
+            return """**AniSol Inventory Control** - Fleet inventory management SOFTWARE for tracking spares and consumables across vessels.
+
+**Key Features:**
+• Software for tracking spares & consumables inventory
+• Real-time ROB (Remaining Onboard) monitoring system
+• Automated reordering and shortage alert software
+• Integration with maintenance and procurement systems
+• Fleet-wide visibility and audit compliance tools
+
+*We provide inventory management SOFTWARE - not physical supplies or chandlery services.*
+
+Contact info@aniketsolutions.com for software implementation."""
+
+        elif category == 'payroll':
+            return """**AniSol Payroll & Master Cash** - Maritime crew financial management SOFTWARE with compliance features.
+
+**Key Features:**
+• Automated payroll software with overtime and allowances
+• Multi-currency support and exchange rate systems
+• Digital master's cash and petty cash management
+• Portage bill generation and audit trail software
+• Integration with accounting systems
+
+*We provide payroll management SOFTWARE - not financial services or banking.*
+
+Contact info@aniketsolutions.com for software setup consultation."""
+
+        elif category == 'crewing':
+            return """**AniSol Crewing Module** - Complete crew lifecycle management SOFTWARE for maritime operations.
+
+**Key Features:**
+• Crew scheduling and deployment planning software
+• Digital document and certification management
+• STCW and MLC compliance tracking systems
+• Performance appraisals and training record software
+• Payroll and cash management integration
+
+*We provide crew management SOFTWARE - not recruitment or manning services.*
+
+Contact info@aniketsolutions.com for software consultation."""
+
+        elif category == 'tms':
+            return """**AniSol TMS** - Technical Management SOFTWARE for maritime maintenance and compliance tracking.
+
+**Key Features:**
+• Planned and unplanned maintenance scheduling software
+• PSC inspection and class survey tracking systems
+• Digital work order management and history
+• Certificate lifecycle management software
+• Integration with inventory for spare parts tracking
+
+*We provide maintenance management SOFTWARE - not physical repair or drydocking services.*
+
+Contact info@aniketsolutions.com for software implementation."""
+
+        elif category == 'procurement':
+            return """**AniSol Procurement** - AI-powered maritime purchasing management SOFTWARE with vendor tracking.
+
+**Key Features:**
+• Multi-type requisition management software
+• Vendor database and performance tracking systems
+• Automated approval workflow software
+• ShipServ integration and quote comparison tools
+• Budget control and audit logging systems
+
+*We provide procurement management SOFTWARE - not physical supplies or chandlery services.*
+
+Contact info@aniketsolutions.com for software setup."""
+
+    # Fallback for products
+    return """**AniSol Maritime Software Suite** - Integrated fleet management solutions:
+
+• **TMS** - Technical maintenance management
+• **Procurement** - AI-powered purchasing
+• **Inventory** - Fleet-wide stock control
+• **Crewing** - Crew lifecycle management
+• **Payroll** - Maritime financial management
+
+Contact info@aniketsolutions.com for product consultation."""
+
+def get_service_response_enhanced(query):
+    """Enhanced service response using comprehensive keyword matching"""
+    
+    # Get the best matching category
+    category, confidence, matched_keywords = get_best_match_category(query)
+    
+    # If we have a good match (confidence > 0.25) and it's a service category
+    if confidence > 0.25 and category in ['custom_development', 'mobile', 'ai_ml', 'data_services', 'integration', 'chatbot']:
+        
+        if category == 'chatbot':
+            return """**AI Chatbot & Virtual Assistant Services** - Intelligent customer service automation with 24/7 support capabilities.
+
+**Key Features:**
+• Natural language conversation management
+• Multi-channel deployment (website, WhatsApp, SMS)
+• Smart escalation to human agents
+• CRM integration and analytics
+• Custom knowledge base training
+
+Contact info@aniketsolutions.com for chatbot implementation."""
+
+        elif category == 'custom_development':
+            return """**Custom Application Development** - Tailored software solutions for specific business requirements.
+
+**Key Features:**
+• Enterprise web and desktop applications
+• Modern frameworks (React, Angular, Node.js)
+• Database design and API development
+• Legacy system modernization
+• Cloud deployment and scaling
+
+Contact info@aniketsolutions.com for development consultation."""
+
+        elif category == 'mobile':
+            return """**Mobile Application Development** - Native and cross-platform mobile solutions.
+
+**Key Features:**
+• iOS and Android native development
+• Cross-platform solutions (React Native, Flutter)
+• Offline capabilities and data sync
+• Enterprise integration and security
+• App store deployment support
+
+Contact info@aniketsolutions.com for mobile development."""
+
+        elif category == 'ai_ml':
+            return """**AI & Machine Learning Services** - Intelligent automation and predictive analytics solutions.
+
+**Key Features:**
+• Predictive analytics and forecasting
+• Natural language processing
+• Computer vision and automation
+• Custom AI model development
+• Business intelligence integration
+
+Contact info@aniketsolutions.com for AI consultation."""
+
+        elif category == 'data_services':
+            return """**Data Services & Migration** - Database solutions and business intelligence platforms.
+
+**Key Features:**
+• Database migration and optimization
+• Data warehousing and analytics
+• Business intelligence dashboards
+• ETL processes and data integration
+• Cloud data platform setup
+
+Contact info@aniketsolutions.com for data consultation."""
+
+        elif category == 'integration':
+            return """**System Integration Services** - Connecting business applications and data flow automation.
+
+**Key Features:**
+• API development and management
+• ERP and CRM integration
+• Real-time data synchronization
+• Cloud and on-premise connectivity
+• Workflow automation
+
+Contact info@aniketsolutions.com for integration planning."""
+
+    # Fallback for services
+    return """**Technology Services Portfolio** - Comprehensive business technology solutions:
+
+• **Custom Development** - Tailored software solutions
+• **Mobile Apps** - iOS/Android development
+• **AI & ML** - Intelligent automation
+• **Data Services** - Migration and analytics
+• **Integration** - System connectivity
+• **Chatbots** - Customer service automation
+
+Contact info@aniketsolutions.com for service consultation."""
+
+# Enhanced smart response function that uses the comprehensive keyword matching
+def generate_smart_response_enhanced(user_message):
+    """Enhanced smart response using comprehensive keyword matching"""
+    try:
+        # Track interaction for keep-alive system
+        if "interaction_count" in st.session_state:
+            st.session_state.interaction_count += 1
+            st.session_state.last_activity = datetime.now()
+        
+        # First, get the best category match with confidence score
+        category, confidence, matched_keywords = get_best_match_category(user_message)
+        
+        # IMPROVED LOGIC: Always respond based on what the user is asking about, 
+        # regardless of their initial selection (products vs services)
+        if confidence > 0.25:  # Lowered threshold further for better responsiveness
+            # Check if it's a product category - respond with product info
+            if category in ['inventory', 'payroll', 'crewing', 'tms', 'procurement']:
+                return get_product_response_enhanced(user_message)
+            # Check if it's a service category - respond with service info
+            elif category in ['custom_development', 'mobile', 'ai_ml', 'data_services', 'integration', 'chatbot']:
+                return get_service_response_enhanced(user_message)
+        
+        # Fallback to AI if no strong keyword match and AI is available
+        if st.session_state.get("openai_client"):
+            full_context = f"""
+You are Alex, a senior technology consultant at Aniket Solutions. Provide professional responses about our maritime software products and technology services.
+
+AVAILABLE MARITIME PRODUCTS:
+- AniSol Inventory Control: Fleet inventory management with spare parts and consumables tracking
+- AniSol Payroll & Master Cash: Crew financial management with multi-currency support
+- AniSol Crewing Module: Complete crew lifecycle management with compliance tracking
+- AniSol TMS: Technical Management System for maintenance and inspections
+- AniSol Procurement: AI-powered purchasing platform with vendor management
+
+AVAILABLE TECHNOLOGY SERVICES:
+- Custom Application Development: Enterprise software solutions and legacy modernization
+- Mobile Solutions: Native iOS/Android apps and cross-platform development
+- AI & Machine Learning: Intelligent automation and predictive analytics
+- Data Services & Migration: Database migration and business intelligence
+- System Integration: API development and enterprise connectivity
+- AI Chatbots & Virtual Assistants: Conversational AI for customer service
+
+IMPORTANT INSTRUCTIONS:
+- Always respond based on what the user is asking about, regardless of any previous category selection
+- If they ask about products (inventory, payroll, crewing, TMS, procurement), provide detailed product information
+- If they ask about services (development, mobile, AI, data, integration, chatbot), provide detailed service information
+- Use specific technical details and business benefits
+- Always include contact info@aniketsolutions.com for detailed consultation
+- Respond professionally without conversational AI language
+"""
+            
+            messages = [
+                {"role": "system", "content": full_context},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = st.session_state.openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=messages,
+                temperature=0.2,
+                max_tokens=600,  # Increased for more detailed responses
+                presence_penalty=0.0,
+                frequency_penalty=0.0
+            )
+            
+            ai_response = response.choices[0].message.content.strip()
+            
+            # Validate response quality
+            prohibited_phrases = [
+                "that's a great question", "i'd be happy to", "absolutely", "perfect choice",
+                "excellent question", "wonderful", "fantastic", "amazing", "excited to help"
+            ]
+            
+            ai_lower = ai_response.lower()
+            if not any(phrase in ai_lower for phrase in prohibited_phrases):
+                return ai_response
+        
+        # Final fallback
+        return "For information about our maritime software products and technology services, contact our specialists at info@aniketsolutions.com for detailed consultation."
         
     except Exception as e:
-        print(f"❌ Email send error: {e}")
-        return False
-
-def create_html_email(user_email, start_time, duration, total_messages, conversation_id, messages):
-    """Create HTML email body"""
-    
-    # Create messages HTML
-    messages_html = ""
-    for msg in messages:
-        role_display = "🤖 Alex (Assistant)" if msg['role'] == 'assistant' else "👤 User"
-        timestamp = msg.get('timestamp_singapore', 'Unknown')
-        if 'T' in timestamp:
-            timestamp = datetime.fromisoformat(timestamp.replace('Z', '')).strftime('%H:%M:%S')
-        
-        # Style based on role
-        if msg['role'] == 'assistant':
-            style = "background: #f0f8ff; border-left: 4px solid #4285f4; margin: 10px 0; padding: 15px; border-radius: 8px;"
-        else:
-            style = "background: #f8f9fa; border-left: 4px solid #28a745; margin: 10px 0; padding: 15px; border-radius: 8px;"
-        
-        messages_html += f"""
-        <div style="{style}">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <strong style="color: #333;">{role_display}</strong>
-                <small style="color: #666;">{timestamp}</small>
-            </div>
-            <div style="line-height: 1.5; color: #444;">
-                {msg['content'].replace('\n', '<br>')}
-            </div>
-        </div>
-        """
-    
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>AniSol Conversation Report</title>
-    </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px;">
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">🚢 AniSol Conversation Report</h1>
-            <p style="color: #f0f0f0; margin: 8px 0 0 0; font-size: 14px;">Complete Conversation Transcript</p>
-        </div>
-        
-        <div style="background: #ffffff; padding: 25px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-            
-            <!-- Conversation Summary -->
-            <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
-                <h2 style="margin: 0 0 15px 0; color: #1565c0;">📋 Conversation Summary</h2>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                    <div>
-                        <strong>User Email:</strong><br>
-                        <span style="color: #666;">{user_email}</span>
-                    </div>
-                    <div>
-                        <strong>Start Time:</strong><br>
-                        <span style="color: #666;">{start_time}</span>
-                    </div>
-                    <div>
-                        <strong>Duration:</strong><br>
-                        <span style="color: #666;">{duration}</span>
-                    </div>
-                    <div>
-                        <strong>Messages:</strong><br>
-                        <span style="color: #666;">{total_messages}</span>
-                    </div>
-                </div>
-                <div style="margin-top: 15px;">
-                    <strong>Conversation ID:</strong><br>
-                    <code style="background: #f5f5f5; padding: 4px 8px; border-radius: 4px; font-size: 12px;">{conversation_id}</code>
-                </div>
-            </div>
-
-            <!-- Full Conversation -->
-            <div style="margin-bottom: 25px;">
-                <h2 style="margin: 0 0 20px 0; color: #333;">💬 Complete Conversation</h2>
-                {messages_html}
-            </div>
-
-            <!-- Footer -->
-            <div style="text-align: center; color: #666; font-size: 14px; border-top: 1px solid #eee; padding-top: 20px;">
-                <p><strong>📧 AniSol AI Assistant</strong><br>
-                Conversation transcript automatically generated<br>
-                <span style="font-size: 12px;">Generated: {datetime.now(COMPANY_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')} SGT</span></p>
-                
-                <p style="margin: 15px 0 0 0; font-size: 13px;">
-                    📞 <strong>Contact:</strong> info@aniketsolutions.com | 
-                    🌐 <strong>Website:</strong> https://www.aniketsolutions.com
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-
-def create_text_email(user_email, start_time, duration, total_messages, conversation_id, messages):
-    """Create plain text email body"""
-    
-    # Create messages text
-    messages_text = ""
-    for msg in messages:
-        role_display = "Alex (Assistant)" if msg['role'] == 'assistant' else "User"
-        timestamp = msg.get('timestamp_singapore', 'Unknown')
-        if 'T' in timestamp:
-            timestamp = datetime.fromisoformat(timestamp.replace('Z', '')).strftime('%H:%M:%S')
-        
-        messages_text += f"""
-[{timestamp}] {role_display}:
-{msg['content']}
-
-{'=' * 60}
-"""
-    
-    return f"""
-AniSol Conversation Report
-
-CONVERSATION SUMMARY:
-• User Email: {user_email}
-• Start Time: {start_time} 
-• Duration: {duration}
-• Total Messages: {total_messages}
-• Conversation ID: {conversation_id}
-
-COMPLETE CONVERSATION:
-{'=' * 60}
-{messages_text}
-
-Generated automatically by AniSol AI Assistant
-Contact: info@aniketsolutions.com | Website: https://www.aniketsolutions.com
-    """
-
-# =============================================================================
-# FIXED CONVERSATION MANAGER - SIMPLE & RELIABLE
-# =============================================================================
-
-class SimpleConversationManager:
-    def __init__(self):
-        self.conversation_id = str(uuid.uuid4())
-        self.user_email = None
-        self.messages = []
-        self.start_time = datetime.now(UTC)
-        
-    def add_message(self, role: str, content: str):
-        """Add a message to the conversation"""
-        current_time = datetime.now(UTC)
-        singapore_time = datetime.now(COMPANY_TIMEZONE)
-        
-        message = {
-            'role': role,
-            'content': content,
-            'timestamp_utc': current_time.isoformat(),
-            'timestamp_singapore': singapore_time.isoformat()
-        }
-        
-        self.messages.append(message)
-    
-    def set_user_email(self, email: str):
-        """Set user email"""
-        self.user_email = email
-    
-    def get_conversation_data(self):
-        """Get complete conversation data"""
-        end_time = datetime.now(UTC)
-        singapore_end_time = datetime.now(COMPANY_TIMEZONE)
-        
-        return {
-            'conversation_id': self.conversation_id,
-            'user_email': self.user_email,
-            'start_time_utc': self.start_time.isoformat(),
-            'start_time_singapore': datetime.now(COMPANY_TIMEZONE).replace(
-                year=self.start_time.year, month=self.start_time.month, day=self.start_time.day,
-                hour=self.start_time.hour, minute=self.start_time.minute, second=self.start_time.second
-            ).isoformat(),
-            'end_time_utc': end_time.isoformat(),
-            'end_time_singapore': singapore_end_time.isoformat(),
-            'total_messages': len(self.messages),
-            'messages': self.messages,
-            'created_at': datetime.now(UTC).isoformat()
-        }
-    
-    def save_and_email_conversation_simple(self):
-        """FIXED: Simple function that saves and emails without blocking - fire and forget"""
-        try:
-            conversation_data = self.get_conversation_data()
-            
-            # Fire and forget - don't wait for results
-            print("🚀 Starting S3 save and email operations...")
-            
-            # Try S3 save (non-blocking)
-            try:
-                s3_result = save_conversation_to_s3(conversation_data)
-            except Exception as e:
-                print(f"S3 operation failed: {e}")
-                s3_result = False
-            
-            # Try email send (non-blocking)
-            try:
-                email_result = email_conversation_transcript(conversation_data)
-            except Exception as e:
-                print(f"Email operation failed: {e}")
-                email_result = False
-            
-            print(f"💾 S3 Save: {'Success' if s3_result else 'Failed'}")
-            print(f"📧 Email Send: {'Success' if email_result else 'Failed'}")
-            
-            return s3_result, email_result
-            
-        except Exception as e:
-            print(f"❌ Conversation save error: {e}")
-            return False, False
+        return "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
 
 # =============================================================================
 # EMAIL VALIDATION AND OTP FUNCTIONS
@@ -412,24 +902,28 @@ def send_otp_email(email, otp):
     """Send OTP to the provided email address using AWS SES"""
     try:
         if not ses_client:
-            return False, "AWS SES not configured."
+            return False, "AWS SES not configured. Please configure AWS credentials in .env file."
         
+        # Try to get sender email, with fallback options
         sender_email = SES_FROM_EMAIL
         
         if not sender_email:
+            # If no SES_FROM_EMAIL specified, try to get verified identities
             try:
                 response = ses_client.list_verified_email_addresses()
                 verified_emails = response.get('VerifiedEmailAddresses', [])
                 
                 if verified_emails:
-                    sender_email = verified_emails[0]
+                    sender_email = verified_emails[0]  # Use first verified email
                 else:
-                    return False, "No verified email addresses found in AWS SES."
+                    return False, "No verified email addresses found in AWS SES. Please verify at least one email address."
             except Exception as e:
                 return False, f"Could not retrieve verified email addresses: {str(e)}"
         
+        # Email subject
         subject = "Aniket Solutions - Email Verification Code"
         
+        # HTML email body for better formatting
         html_body = f"""
         <!DOCTYPE html>
         <html>
@@ -454,9 +948,18 @@ def send_otp_email(email, otp):
                 <p>To verify your email address and continue with our consultation, please use the following verification code:</p>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <div style="background: #f8f9fa; border: 2px solid #667eea; border-radius: 10px; padding: 20px; display: inline-block;">
+                    <div style="background: #f8f9fa; 
+                                border: 2px solid #667eea; 
+                                border-radius: 10px; 
+                                padding: 20px; 
+                                display: inline-block;">
                         <p style="margin: 0; color: #666; font-size: 14px;">Your Verification Code</p>
-                        <h1 style="margin: 10px 0 0 0; color: #667eea; font-size: 36px; font-weight: bold; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+                        <h1 style="margin: 10px 0 0 0; 
+                                   color: #667eea; 
+                                   font-size: 36px; 
+                                   font-weight: bold; 
+                                   letter-spacing: 8px;
+                                   font-family: 'Courier New', monospace;">
                             {otp}
                         </h1>
                     </div>
@@ -466,6 +969,10 @@ def send_otp_email(email, otp):
                     <strong>⏰ Important:</strong> This verification code will expire in 10 minutes for security purposes.
                 </p>
                 
+                <p style="background: #fff3cd; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                    <strong>🔒 Security Note:</strong> Never share this code with anyone. Aniket Solutions will never ask for your verification code via phone or other means.
+                </p>
+                
                 <p>If you did not request this verification, please ignore this email.</p>
                 
                 <hr style="border: none; height: 1px; background: #eee; margin: 30px 0;">
@@ -473,12 +980,18 @@ def send_otp_email(email, otp):
                 <div style="text-align: center; color: #666; font-size: 14px;">
                     <p><strong>Aniket Solutions</strong><br>
                     Website: <a href="https://www.aniketsolutions.com" style="color: #667eea;">www.aniketsolutions.com</a></p>
+                    
+                    <p style="font-size: 12px; color: #999;">
+                        This is an automated message. Please do not reply to this email.<br>
+                        Established 2004 • Singapore • Global Technology Solutions
+                    </p>
                 </div>
             </div>
         </body>
         </html>
         """
         
+        # Plain text version for email clients that don't support HTML
         text_body = f"""
 Hello,
 
@@ -492,11 +1005,17 @@ This verification code will expire in 10 minutes for security purposes.
 
 If you did not request this verification, please ignore this email.
 
+Security Note: Never share this code with anyone. Aniket Solutions will never ask for your verification code via phone or other means.
+
 Best regards,
 Aniket Solutions Team
 Website: https://www.aniketsolutions.com
+
+---
+This is an automated message. Please do not reply to this email.
         """
         
+        # Send email using AWS SES
         response = ses_client.send_email(
             Source=sender_email,
             Destination={'ToAddresses': [email]},
@@ -509,14 +1028,18 @@ Website: https://www.aniketsolutions.com
             }
         )
         
-        return True, f"OTP sent successfully to {email}!"
+        return True, f"OTP sent successfully to {email} from {sender_email}! Message ID: {response['MessageId']}"
         
     except ClientError as e:
         error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        
         if error_code == 'MessageRejected':
-            return False, "Email address not verified in AWS SES."
+            return False, "Email address not verified in AWS SES. Please verify the sender email address."
+        elif error_code == 'SendingPausedException':
+            return False, "AWS SES sending is paused for your account. Please contact AWS support."
         else:
-            return False, f"AWS SES error: {e.response['Error']['Message']}"
+            return False, f"AWS SES error ({error_code}): {error_message}"
             
     except Exception as e:
         return False, f"Failed to send OTP email: {str(e)}"
@@ -533,9 +1056,11 @@ def verify_otp(entered_otp, stored_otp_data):
     if not stored_otp or not timestamp:
         return False, "Invalid OTP data."
     
+    # Check if too many attempts
     if attempts >= 3:
         return False, "Too many failed attempts. Please request a new OTP."
     
+    # Check if OTP has expired (10 minutes = 600 seconds)
     current_time = datetime.now()
     time_diff = (current_time - timestamp).total_seconds()
     
@@ -547,6 +1072,182 @@ def verify_otp(entered_otp, stored_otp_data):
     else:
         return False, "Invalid OTP. Please try again."
 
+def moderate_content(text):
+    """Check content using OpenAI Moderation API"""
+    try:
+        # Check if OpenAI client is available
+        if not client:
+            return True, "Content moderation unavailable - proceeding"
+        
+        # Use OpenAI Moderation API
+        response = client.moderations.create(input=text)
+        
+        moderation_result = response.results[0]
+        
+        if moderation_result.flagged:
+            # Get specific violation categories
+            flagged_categories = []
+            categories = moderation_result.categories
+            
+            if categories.harassment: flagged_categories.append("harassment")
+            if categories.harassment_threatening: flagged_categories.append("threatening content")
+            if categories.hate: flagged_categories.append("hate speech")
+            if categories.hate_threatening: flagged_categories.append("threatening hate speech")
+            if categories.self_harm: flagged_categories.append("self-harm content")
+            if categories.self_harm_instructions: flagged_categories.append("self-harm instructions")
+            if categories.self_harm_intent: flagged_categories.append("self-harm intent")
+            if categories.sexual: flagged_categories.append("sexual content")
+            if categories.sexual_minors: flagged_categories.append("sexual content involving minors")
+            if categories.violence: flagged_categories.append("violent content")
+            if categories.violence_graphic: flagged_categories.append("graphic violence")
+            
+            violation_text = ", ".join(flagged_categories)
+            return False, f"Content flagged for: {violation_text}"
+        
+        return True, "Content approved"
+        
+    except Exception as e:
+        # Log error but don't block user - moderation failure shouldn't stop legitimate users
+        return True, f"Moderation check failed, proceeding: {str(e)}"
+
+def detect_gibberish(text):
+    """Detect if text is gibberish or meaningless"""
+    
+    # Basic gibberish detection patterns
+    text_clean = text.lower().strip()
+    
+    # Check for minimum length
+    if len(text_clean) < 2:
+        return True, "Message too short"
+    
+    # Check for excessive repetition of characters
+    if len(set(text_clean)) <= 2 and len(text_clean) > 5:
+        return True, "Excessive character repetition detected"
+    
+    # Check for random character sequences
+    vowels = set('aeiou')
+    consonants = set('bcdfghjklmnpqrstvwxyz')
+    
+    # Count vowels and consonants
+    vowel_count = sum(1 for char in text_clean if char in vowels)
+    consonant_count = sum(1 for char in text_clean if char in consonants)
+    total_letters = vowel_count + consonant_count
+    
+    if total_letters > 5:
+        vowel_ratio = vowel_count / total_letters
+        # If vowel ratio is too low (< 0.1) or too high (> 0.8), likely gibberish
+        if vowel_ratio < 0.1 or vowel_ratio > 0.8:
+            return True, "Unusual character pattern detected"
+    
+    # Check for excessive consecutive consonants
+    consecutive_consonants = 0
+    max_consecutive_consonants = 0
+    
+    for char in text_clean:
+        if char in consonants:
+            consecutive_consonants += 1
+            max_consecutive_consonants = max(max_consecutive_consonants, consecutive_consonants)
+        else:
+            consecutive_consonants = 0
+    
+    if max_consecutive_consonants > 4:
+        return True, "Excessive consecutive consonants detected"
+    
+    # Check for keyboard mashing patterns
+    keyboard_rows = [
+        'qwertyuiop',
+        'asdfghjkl',
+        'zxcvbnm'
+    ]
+    
+    for row in keyboard_rows:
+        for i in range(len(row) - 3):
+            sequence = row[i:i+4]
+            if sequence in text_clean or sequence[::-1] in text_clean:
+                return True, "Keyboard sequence pattern detected"
+    
+    # Check for common gibberish patterns
+    gibberish_patterns = [
+        'aaaa', 'bbbb', 'cccc', 'dddd', 'eeee',
+        'asdf', 'qwer', 'zxcv', 'hjkl',
+        'test123', 'aaaaa', 'bbbbb'
+    ]
+    
+    for pattern in gibberish_patterns:
+        if pattern in text_clean:
+            return True, f"Common gibberish pattern detected: {pattern}"
+    
+    return False, "Text appears valid"
+
+def advanced_gibberish_check_with_openai(text):
+    """Use OpenAI to detect more sophisticated gibberish"""
+    try:
+        if not client:
+            return False, "AI gibberish check unavailable"
+        
+        # Use OpenAI to analyze if text is meaningful
+        prompt = f"""
+        Analyze the following text and determine if it's meaningful business communication or gibberish/spam.
+        
+        Text to analyze: "{text}"
+        
+        Consider:
+        1. Is this a legitimate business inquiry or response?
+        2. Does it contain meaningful words and sentences?
+        3. Is it trying to communicate something specific?
+        4. Could this be from someone genuinely interested in business services?
+        
+        Respond with only one of these options:
+        - "VALID" if it's meaningful business communication
+        - "GIBBERISH" if it's nonsensical, spam, or not a legitimate business inquiry
+        - "UNCLEAR" if you're not sure
+        
+        Response:
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=10,
+            temperature=0.1
+        )
+        
+        result = response.choices[0].message.content.strip().upper()
+        
+        if result == "GIBBERISH":
+            return True, "AI detected non-meaningful content"
+        elif result == "VALID":
+            return False, "AI confirmed meaningful content"
+        else:
+            # If unclear, allow but flag for review
+            return False, "Content unclear but allowed"
+            
+    except Exception as e:
+        # If AI check fails, fall back to basic check only
+        return False, f"AI gibberish check failed: {str(e)}"
+
+def comprehensive_content_filter(text):
+    """Comprehensive content filtering combining moderation and gibberish detection"""
+    
+    # Step 1: OpenAI Moderation API
+    is_safe, moderation_message = moderate_content(text)
+    if not is_safe:
+        return False, f"🚫 Content Moderation: {moderation_message}"
+    
+    # Step 2: Basic gibberish detection
+    is_gibberish, gibberish_message = detect_gibberish(text)
+    if is_gibberish:
+        return False, f"🤖 Content Quality: {gibberish_message}. Please provide a meaningful business inquiry."
+    
+    # Step 3: Advanced AI-based gibberish detection for longer texts
+    if len(text.strip()) > 20:  # Only for longer messages
+        is_ai_gibberish, ai_message = advanced_gibberish_check_with_openai(text)
+        if is_ai_gibberish:
+            return False, f"🤖 Content Analysis: {ai_message}. Please provide a clear business inquiry."
+    
+    return True, "Content approved"
+
+# Email validation functions
 def validate_email_format(email):
     """Validate email format using regex"""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
@@ -555,6 +1256,7 @@ def validate_email_format(email):
 def validate_domain(domain):
     """Validate domain by checking DNS records"""
     try:
+        # Check if domain has MX record (mail exchange)
         mx_records = dns.resolver.resolve(domain, 'MX')
         if mx_records:
             return True, "Domain has valid MX records"
@@ -562,6 +1264,7 @@ def validate_domain(domain):
         return False, "Domain does not exist"
     except dns.resolver.NoAnswer:
         try:
+            # If no MX record, check if domain exists with A record
             a_records = dns.resolver.resolve(domain, 'A')
             if a_records:
                 return True, "Domain exists but no MX record found"
@@ -574,6 +1277,8 @@ def validate_domain(domain):
 
 def is_corporate_email(email):
     """Check if email is from a corporate domain (not personal email providers)"""
+    
+    # Common personal email providers
     personal_domains = {
         'gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com',
         'icloud.com', 'me.com', 'mac.com', 'live.com', 'msn.com',
@@ -587,12 +1292,21 @@ def is_corporate_email(email):
     if domain in personal_domains:
         return False, f"'{domain}' is a personal email provider"
     
-    corporate_indicators = ['.edu', '.gov', '.org']
+    # Additional checks for corporate emails
+    corporate_indicators = [
+        # Common corporate domain patterns
+        '.edu',  # Educational institutions
+        '.gov',  # Government
+        '.org',  # Organizations (many are corporate)
+    ]
     
+    # Check if domain ends with corporate indicators
     for indicator in corporate_indicators:
         if domain.endswith(indicator):
             return True, f"Domain '{domain}' appears to be institutional/corporate"
     
+    # If not in personal list and not obviously personal, likely corporate
+    # Additional validation: check if domain is not a known personal provider
     if '.' in domain and len(domain.split('.')) >= 2:
         return True, f"Domain '{domain}' appears to be corporate"
     
@@ -609,6 +1323,7 @@ def comprehensive_email_validation(email):
         'messages': []
     }
     
+    # Step 1: Format validation
     if not validate_email_format(email):
         results['messages'].append("❌ Invalid email format")
         return results
@@ -616,12 +1331,14 @@ def comprehensive_email_validation(email):
     results['format_valid'] = True
     results['messages'].append("✅ Email format is valid")
     
+    # Step 2: Extract domain and validate
     try:
         domain = email.split('@')[1].lower()
     except IndexError:
         results['messages'].append("❌ Could not extract domain")
         return results
     
+    # Step 3: Domain validation
     domain_valid, domain_message = validate_domain(domain)
     results['domain_valid'] = domain_valid
     
@@ -631,6 +1348,7 @@ def comprehensive_email_validation(email):
         results['messages'].append(f"❌ {domain_message}")
         return results
     
+    # Step 4: Corporate email check
     is_corp, corp_message = is_corporate_email(email)
     results['is_corporate'] = is_corp
     
@@ -639,440 +1357,35 @@ def comprehensive_email_validation(email):
     else:
         results['messages'].append(f"❌ {corp_message}")
     
+    # Overall validation
     results['is_valid'] = results['format_valid'] and results['domain_valid'] and results['is_corporate']
     
     return results
 
 # =============================================================================
-# UNIVERSAL KNOWLEDGE AI RESPONSE
+# ACTIVATE KEEP-ALIVE SYSTEMS
 # =============================================================================
 
-def generate_smart_response(user_message):
-    """Generate smart response using OpenAI with UNIVERSAL knowledge of ALL products and services."""
-    try:
-        # Check if OpenAI client is available
-        if not st.session_state.get("openai_client"):
-            return "Please configure your OpenAI API key in the sidebar to enable AI responses. I can help you with any questions about our maritime software products or technology services."
-        
-        system_prompt = """
-You are Alex, a senior technology consultant at Aniket Solutions. You have COMPLETE universal knowledge of ALL our offerings and can answer ANY question about ANY of our maritime products OR technology services.
+# Run all keep-alive systems
+keep_alive_system()
+add_javascript_keepalive()
+add_auto_refresh()
+add_service_worker()
 
-COMPLETE ANIKET SOLUTIONS PORTFOLIO:
-
-🚢 MARITIME SOFTWARE PRODUCTS:
-
-**AniSol TMS (Technical Management System)**
-- Comprehensive maintenance scheduling and planning with automated workflows
-- Inspection tracking with automated reminders and compliance monitoring
-- Certificate management with expiry alerts and renewal tracking
-- Regulatory compliance monitoring (ISM, ISO, MLC, SOLAS)
-- Work order management and resource allocation
-- Technical documentation and drawings management
-- Performance analytics and KPI dashboards with real-time reporting
-- Integration with classification societies and port state control
-- Spare parts integration for maintenance planning
-- Crew competency tracking for maintenance tasks
-
-**AniSol Procurement - AI-Powered Maritime Purchasing**
-- Intelligent purchase requisition automation with AI-driven recommendations
-- Multi-level approval workflows with role-based permissions
-- Vendor management with performance scoring and evaluation
-- ShipServ marketplace integration for global sourcing
-- Price comparison and negotiation tools with market intelligence
-- Contract management and compliance tracking
-- Spend analytics and cost optimization with predictive insights
-- Emergency procurement workflows for port calls
-- Integration with inventory management for automated reordering
-- Budget management and financial controls
-
-**AniSol Inventory Control - Fleet-Wide Management**
-- Real-time inventory tracking across all vessels and locations
-- Automated reordering based on consumption patterns and lead times
-- Spare parts catalog with detailed technical specifications
-- Critical spares monitoring with safety stock alerts
-- Multi-location warehouse management with transfer capabilities
-- Barcode/RFID integration for efficient tracking
-- Comprehensive audit trails and stock reconciliation
-- Cost center allocation and detailed reporting
-- Integration with procurement and maintenance systems
-- Obsolescence management and lifecycle tracking
-
-**AniSol Crewing Module - Complete Crew Management**
-- Crew planning and rotation scheduling with optimization algorithms
-- Certificate and license tracking with automated expiry alerts
-- Medical certificate management and health monitoring
-- Training records and competency matrix management
-- Performance evaluation and analytics with KPI tracking
-- Visa and travel document management with renewal alerts
-- Crew welfare programs and family communication systems
-- Integration with manning agencies and recruitment partners
-- Payroll integration for seamless financial management
-- Compliance tracking for MLC, STCW, and flag state requirements
-
-**AniSol Payroll & Master Cash - Crew Financial Management**
-- Multi-currency payroll processing with real-time exchange rates
-- Allotment management for crew families with bank integration
-- Tax compliance across multiple jurisdictions
-- Cash advance tracking and reconciliation
-- Overtime calculation and approval workflows
-- Benefits administration and pension management
-- Financial reporting and analytics with cost center allocation
-- Bank integration for direct payments and transfers
-- Mobile access for crew to view pay statements and balances
-- Integration with crewing module for seamless data flow
-
-💻 TECHNOLOGY SERVICES:
-
-**Custom Application Development**
-- Enterprise software architecture and development using modern frameworks
-- Legacy system modernization and cloud migration strategies
-- Cloud-native application development with microservices architecture
-- Database design, optimization, and performance tuning
-- Security implementation and compliance (SOC 2, ISO 27001)
-- Performance optimization and scalability planning
-- DevOps and CI/CD pipeline setup with automated testing
-- API development and integration services
-- Mobile-responsive web applications
-- Quality assurance and testing automation
-
-**Mobile Solutions**
-- Native iOS and Android development with platform-specific optimizations
-- Cross-platform solutions using React Native and Flutter
-- Offline-first mobile applications with data synchronization
-- Enterprise mobile app management and security
-- Mobile device management (MDM) solutions
-- App store deployment and maintenance
-- Mobile analytics and user experience optimization
-- Integration with enterprise backend systems and APIs
-- Maritime-specific mobile apps (crew apps, inventory scanning, maintenance reporting)
-- Push notifications and real-time communication features
-
-**AI & Machine Learning Services**
-- Predictive maintenance algorithms for maritime equipment
-- Natural language processing for document automation
-- Computer vision and image recognition for inspections
-- Intelligent document processing and data extraction
-- Chatbots and virtual assistants for customer service
-- Machine learning model development and deployment
-- AI strategy consulting and implementation roadmaps
-- Data science and analytics platforms
-- Recommendation engines for procurement and inventory
-- Anomaly detection for operational monitoring
-
-**Data Services & Migration**
-- Database migration and modernization projects
-- Data warehouse design and implementation
-- Business intelligence and reporting solutions with interactive dashboards
-- ETL/ELT pipeline development and automation
-- Data quality management and governance frameworks
-- Real-time analytics and operational dashboards
-- Big data processing and storage solutions
-- Data lake architecture and implementation
-- Master data management and data integration
-- Compliance reporting and regulatory data management
-
-**System Integration Services**
-- Enterprise application integration with seamless data flow
-- API development and management platforms
-- Hybrid cloud-premise connectivity solutions
-- Third-party system integration and middleware
-- Workflow automation and business process orchestration
-- Event-driven architecture implementation
-- Message queuing and real-time processing
-- Integration testing and monitoring tools
-- Legacy system connectivity and modernization
-- B2B integration and electronic data interchange (EDI)
-
-**AI Chatbots & Virtual Assistants**
-- Conversational AI development with natural language understanding
-- Multi-channel deployment (web, mobile, messaging platforms, voice)
-- Intent recognition and response generation with machine learning
-- Integration with knowledge bases and enterprise systems
-- Analytics and conversation optimization with performance insights
-- Voice assistant development and speech recognition
-- Multilingual support and localization capabilities
-- 24/7 automated customer support and service desk
-- Maritime-specific chatbots for crew support and operational queries
-- Escalation workflows to human agents when needed
-
-CRITICAL RESPONSE RULES:
-
-1. **IF QUESTION IS ABOUT ANY ANIKET SOLUTIONS PRODUCT/SERVICE:**
-   - Provide detailed, comprehensive answer using the knowledge base above
-   - Answer questions about customer support, chatbots, mobile apps, maritime products, AI services, etc.
-   - Cross-reference related products when relevant
-   - Include technical details and business benefits
-   - Add contact info@aniketsolutions.com for detailed consultation
-   - Be conversational and helpful
-
-2. **IF QUESTION IS COMPLETELY UNRELATED TO ANIKET SOLUTIONS:**
-   - Only then use: "For information about our maritime products or technology services, contact info@aniketsolutions.com"
-
-3. **UNIVERSAL KNOWLEDGE RULE:**
-   - You can answer ANY question about ANY Aniket Solutions offering regardless of what the user initially selected
-   - Maritime products, technology services, AI, mobile apps - answer them all with full details
-
-EXAMPLES OF WHAT TO ANSWER IN DETAIL:
-- "I want customer support" → Detailed response about AI Chatbots & Virtual Assistants
-- "Tell me about mobile apps" → Detailed response about Mobile Solutions
-- "What is TMS?" → Detailed response about AniSol TMS
-- "I need inventory management" → Detailed response about AniSol Inventory Control
-- "Can you build custom software?" → Detailed response about Custom Application Development
-
-EXAMPLES OF FALLBACK RESPONSES:
-- "What's the weather today?" → Use fallback
-- "Tell me about your competitors" → Use fallback  
-- "What's 2+2?" → Use fallback
-
-Remember: You have complete knowledge of ALL Aniket Solutions products and services. Use it!
-"""
-        
-        # Include comprehensive conversation history for better context
-        messages_to_send = [{"role": "system", "content": system_prompt}]
-
-        # Get last 10 messages for context
-        recent_history = [
-            {"role": msg["role"], "content": msg["content"]} 
-            for msg in st.session_state.messages[-10:]
-        ]
-        
-        messages_to_send.extend(recent_history)
-        
-        response = st.session_state.openai_client.chat.completions.create(
-            model="gpt-4",
-            messages=messages_to_send,
-            temperature=0.3,
-            max_tokens=1000,
-            presence_penalty=0.1,
-            frequency_penalty=0.1
-        )
-        
-        return response.choices[0].message.content.strip()
-        
-    except Exception as e:
-        error_msg = str(e)
-        print(f"Error in generate_smart_response: {e}")
-        
-        # Show different messages based on error type
-        if "api_key" in error_msg.lower() or "authentication" in error_msg.lower():
-            return "❌ OpenAI API key issue detected. Please check your API key configuration in the sidebar. For information about our maritime products or technology services, contact info@aniketsolutions.com"
-        elif "rate limit" in error_msg.lower():
-            return "⏱️ API rate limit reached. Please wait a moment and try again. For information about our maritime products or technology services, contact info@aniketsolutions.com"
-        else:
-            return "For information about our maritime products or technology services, contact info@aniketsolutions.com"
-
-# =============================================================================
-# FIXED HELPER FUNCTIONS - NON-BLOCKING
-# =============================================================================
-
-def add_message_to_chat(role, content, timestamp=None):
-    """Add message to chat and conversation manager"""
-    if timestamp is None:
-        timestamp = datetime.now(COMPANY_TIMEZONE).strftime("%H:%M")
-    
-    # Save to session state for display
-    st.session_state.messages.append({
-        "role": role,
-        "content": content,
-        "timestamp": timestamp
-    })
-    
-    # Save to conversation manager
-    if "conversation_manager" in st.session_state:
-        st.session_state.conversation_manager.add_message(role, content)
-
-def update_user_activity():
-    """Update the last user activity timestamp"""
-    st.session_state.last_user_activity = datetime.now()
-
-def check_conversation_flow():
-    """FIXED: Check conversation flow with non-blocking logic"""
-    if "last_user_activity" not in st.session_state:
-        st.session_state.last_user_activity = datetime.now()
-        st.session_state.conversation_ended = False
-        st.session_state.asked_for_more_questions = False
-        return False
-    
-    current_time = datetime.now()
-    
-    # Check if conversation has already ended
-    if st.session_state.get("conversation_ended"):
-        return True
-    
-    # Skip inactivity check if still in initial flow
-    if (st.session_state.conversation_flow.get("awaiting_email") or 
-        st.session_state.conversation_flow.get("awaiting_otp") or 
-        st.session_state.conversation_flow.get("awaiting_selection")):
-        return False
-    
-    # Check if we're in the middle of a business conversation
-    if st.session_state.conversation_flow.get("otp_verified"):
-        time_since_activity = current_time - st.session_state.last_user_activity
-        
-        # First warning at 3 minutes - ask if they have more questions
-        if (time_since_activity.total_seconds() > 180 and  # 3 minutes
-            not st.session_state.get("asked_for_more_questions")):
-            
-            st.session_state.asked_for_more_questions = True
-            st.session_state.follow_up_time = current_time
-            
-            add_message_to_chat("assistant", 
-                "Is there anything else I can help you with regarding our maritime products or technology services?")
-            
-            return False
-        
-        # Final timeout at 6 minutes total (3 min + 3 min after follow-up)
-        elif (st.session_state.get("asked_for_more_questions") and 
-              time_since_activity.total_seconds() > 360):  # 6 minutes total
-            
-            st.session_state.conversation_ended = True
-            
-            # Add graceful ending message
-            add_message_to_chat("assistant", 
-                "Thank you for your time! It was great discussing our solutions with you. This conversation has been completed and saved. You'll receive a copy via email shortly. Have a wonderful day!")
-            
-            # FIXED: Non-blocking save and email
-            if "conversation_manager" in st.session_state:
-                try:
-                    s3_success, email_success = st.session_state.conversation_manager.save_and_email_conversation_simple()
-                    print(f"✅ Operations completed - S3: {'Success' if s3_success else 'Failed'}, Email: {'Success' if email_success else 'Failed'}")
-                except Exception as e:
-                    print(f"❌ Save/email error: {e}")
-            
-            return True
-    
-    return False
-
-def safe_restart_conversation():
-    """FIXED: Safely restart conversation instantly without delays"""
-    # Only delete specific conversation-related keys
-    keys_to_delete = [
-        "messages", "conversation_manager", "last_user_activity",
-        "conversation_ended", "asked_for_more_questions", 
-        "conversation_flow", "otp_data"
-        # Removed "restart_time" as it's no longer needed
-    ]
-    
-    for key in keys_to_delete:
-        if key in st.session_state:
-            del st.session_state[key]
-    
-    st.rerun()
-
-def add_initial_greeting():
-    """Add initial greeting message"""
-    greeting_message = """Hi! I'm Alex from Aniket Solutions. I can help you with any questions about our maritime software products OR technology services. Please share your corporate email to get started."""
-    
-    timestamp = datetime.now().strftime("%H:%M")
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": greeting_message,
-        "timestamp": timestamp
-    })
-
-def handle_email_validation_flow(email, validation_result):
-    """Handle the flow after email validation"""
-    if validation_result['is_valid']:
-        validation_response = "✅ Email validated successfully."
-        add_message_to_chat("assistant", validation_response)
-        
-        # Update conversation manager with email
-        if "conversation_manager" in st.session_state:
-            st.session_state.conversation_manager.set_user_email(email)
-        
-        otp = generate_otp()
-        success, message = send_otp_email(email, otp)
-        
-        if success:
-            st.session_state.otp_data = {
-                "otp": otp,
-                "email": email,
-                "timestamp": datetime.now(),
-                "attempts": 0
-            }
-            
-            st.session_state.conversation_flow["email_validated"] = True
-            st.session_state.conversation_flow["awaiting_email"] = False
-            st.session_state.conversation_flow["awaiting_otp"] = True
-            
-            add_message_to_chat("assistant", 
-                f"I've sent a 6-digit code to {email}. Please enter it below to continue. Code expires in 10 minutes."
-            )
-            return True
-        else:
-            add_message_to_chat("assistant", 
-                f"Email validation successful, but couldn't send verification code: {message}")
-            return False
-    else:
-        validation_response = f"""Email validation failed:
-
-{chr(10).join(validation_result['messages'])}
-
-Please provide a valid corporate email address."""
-        
-        add_message_to_chat("assistant", validation_response)
-        return False
-
-# =============================================================================
-# STREAMLIT APP CONFIGURATION
-# =============================================================================
-
-# Configure the page
-st.set_page_config(
-    page_title="Aniket Solutions - AI Assistant",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# Custom CSS - CLEANED UP
+# Custom CSS for better styling and hide sidebar completely
 st.markdown("""
 <style>
-    /* Universal knowledge indicator */
-    .universal-indicator {
-        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
-        border: 2px solid #4caf50;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        text-align: center;
-    }
-    
-    .universal-indicator h4 {
-        color: #2e7d32;
-        margin: 0 0 5px 0;
-    }
-    
-    .universal-indicator p {
-        color: #388e3c;
-        margin: 0;
-        font-size: 14px;
-    }
-    
     /* Hide sidebar completely */
-    .css-1d391kg, .css-1rs6os, .css-17eq0hr, section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
-        display: none !important;
-    }
+    .css-1d391kg {display: none !important;}
+    .css-1rs6os {display: none !important;}
+    .css-17eq0hr {display: none !important;}
+    section[data-testid="stSidebar"] {display: none !important;}
     
-    /* Fix main app container */
     .stApp {
         max-width: 800px;
         margin: 0 auto;
-        padding-top: 1rem !important;
     }
     
-    .main .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        max-width: 800px;
-    }
-    
-    /* Hide Streamlit header */
-    header[data-testid="stHeader"] {
-        display: none !important;
-    }
-    
-    /* Chat message styling */
     .chat-message {
         padding: 1rem;
         border-radius: 0.5rem;
@@ -1089,6 +1402,14 @@ st.markdown("""
     .chat-message.assistant {
         background-color: #f5f5f5;
         margin-right: 10%;
+    }
+    
+    .chat-message img {
+        object-fit: cover;
+        max-width: 45px;
+        max-height: 45px;
+        width: 45px;
+        height: 45px;
     }
     
     /* Button styling */
@@ -1109,134 +1430,119 @@ st.markdown("""
         border-color: #667eea;
         box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
     }
-    
-    /* FIXED: Simple conversation ended styling - instant restart */
-    .conversation-ended {
-        background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
-        border: 2px solid #4caf50;
-        border-radius: 15px;
-        padding: 30px;
-        text-align: center;
-        margin: 20px 0;
-        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.2);
-    }
-    
-    .conversation-ended h3 {
-        color: #2e7d32;
-        margin-bottom: 15px;
-        font-size: 1.5rem;
-    }
-    
-    .conversation-ended p {
-        color: #388e3c;
-        margin-bottom: 15px;
-        font-size: 1.1rem;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Avatar Configuration
-ALEX_AVATAR_URL = "https://raw.githubusercontent.com/AShirsat96/WebsiteChatbot/main/Alex_AI_Avatar.png"
-USER_AVATAR_URL = "https://api.dicebear.com/7.x/initials/svg?seed=User&backgroundColor=4f46e5&fontSize=40"
+def add_initial_greeting():
+    """Add initial AI-powered greeting message when chat starts"""
+    greeting_message = """Hi! I'm Alex from Aniket Solutions. How can I assist you with maritime software or tech services? Please share your corporate email."""
+    
+    timestamp = datetime.now().strftime("%H:%M")
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": greeting_message,
+        "timestamp": timestamp
+    })
 
-# =============================================================================
-# MAIN APP INITIALIZATION - FIXED
-# =============================================================================
+def add_message_to_chat(role, content, timestamp=None):
+    """Helper function to add messages to chat"""
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%H:%M")
+    
+    st.session_state.messages.append({
+        "role": role,
+        "content": content,
+        "timestamp": timestamp
+    })
+
+def handle_email_validation_flow(email, validation_result):
+    """Handle the flow after email validation"""
+    # Add validation result to chat
+    if validation_result['is_valid']:
+        validation_response = "✅ Email validated successfully."
+        add_message_to_chat("assistant", validation_response)
+        
+        # Generate and send OTP
+        otp = generate_otp()
+        success, message = send_otp_email(email, otp)
+        
+        if success:
+            # Store OTP data in session state
+            st.session_state.otp_data = {
+                "otp": otp,
+                "email": email,
+                "timestamp": datetime.now(),
+                "attempts": 0
+            }
+            
+            st.session_state.conversation_flow["email_validated"] = True
+            st.session_state.conversation_flow["awaiting_email"] = False
+            st.session_state.conversation_flow["awaiting_otp"] = True
+            
+            # Verification message
+            add_message_to_chat("assistant", 
+                f"I've sent a 6-digit code to {email}. Please enter it below to continue. Code expires in 10 minutes."
+            )
+            return True
+        else:
+            add_message_to_chat("assistant", 
+                f"Email validation successful, but couldn't send verification code: {message}")
+            return False
+    else:
+        validation_response = f"""Email validation failed:
+
+{chr(10).join(validation_result['messages'])}
+
+Please provide a valid corporate email address."""
+        
+        add_message_to_chat("assistant", validation_response)
+        return False
 
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "api_key" not in st.session_state:
+    # Use the environment variable API key if available
     if OPENAI_API_KEY:
         st.session_state.api_key = OPENAI_API_KEY
     else:
         st.session_state.api_key = ""
 
+# Initialize OpenAI client in session state
 if "openai_client" not in st.session_state:
     if OPENAI_API_KEY:
         st.session_state.openai_client = client
     else:
         st.session_state.openai_client = None
 
-# Conversation flow state
+# Initialize selected avatar in session state
+if "selected_avatar" not in st.session_state:
+    st.session_state.selected_avatar = ALEX_AVATAR_URL
+
 if "conversation_flow" not in st.session_state:
     st.session_state.conversation_flow = {
         "email_validated": False,
         "awaiting_email": True,
         "awaiting_otp": False,
         "otp_verified": False,
-        "awaiting_selection": False
+        "awaiting_selection": False,
+        "selected_category": None,
+        "awaiting_specification": False
     }
 
 if "otp_data" not in st.session_state:
     st.session_state.otp_data = None
 
-# Activity tracking
-if "last_user_activity" not in st.session_state:
-    st.session_state.last_user_activity = datetime.now()
-
-if "conversation_ended" not in st.session_state:
-    st.session_state.conversation_ended = False
-
-if "asked_for_more_questions" not in st.session_state:
-    st.session_state.asked_for_more_questions = False
-
-# FIXED: Initialize conversation manager with error handling
-try:
-    if "conversation_manager" not in st.session_state:
-        st.session_state.conversation_manager = SimpleConversationManager()
-except Exception as e:
-    print(f"Error initializing conversation manager: {e}")
-    st.session_state.conversation_manager = None
-
-# Check conversation flow
-conversation_ended = check_conversation_flow()
-
 # Add initial greeting if messages is empty
 if len(st.session_state.messages) == 0:
     add_initial_greeting()
-
-# FIXED: If conversation has ended, show completion and instant restart
-if conversation_ended:
-    st.markdown("""
-    <div class="conversation-ended">
-        <h3>✅ Conversation Completed</h3>
-        <p>Thank you for your time! Your conversation has been saved and you'll receive a copy via email.</p>
-        <p><em>Starting a new session now...</em></p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # FIXED: Instant restart - no countdown, no blocking
-    safe_restart_conversation()
 
 # Sidebar for configuration
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    # Universal Knowledge Indicator
-    st.markdown("""
-    <div class="universal-indicator">
-        <h4>🧠 Universal Knowledge Mode</h4>
-        <p>AI can answer questions about ALL products and services</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Conversation status
-    if st.session_state.conversation_flow.get("otp_verified"):
-        time_since_activity = datetime.now() - st.session_state.last_user_activity
-        minutes_inactive = int(time_since_activity.total_seconds() // 60)
-        
-        if minutes_inactive >= 3 and not st.session_state.get("asked_for_more_questions"):
-            st.warning("💬 Just asked if you have more questions!")
-        elif st.session_state.get("asked_for_more_questions"):
-            st.info("⏰ Conversation will end in ~3 minutes if no response")
-        else:
-            st.success(f"✅ Active conversation ({minutes_inactive}m inactive)")
-    
-    st.divider()
-    
-    # OpenAI Configuration
+    # API Key status (only show if not in environment)
     if not OPENAI_API_KEY:
         api_key = st.text_input(
             "OpenAI API Key",
@@ -1247,32 +1553,126 @@ with st.sidebar:
         
         if api_key:
             st.session_state.api_key = api_key
+            # Initialize OpenAI client with the new API key
             st.session_state.openai_client = OpenAI(api_key=api_key)
     else:
-        st.success("✅ API Key configured")
+        st.success("✅ API Key configured from .env file")
+        st.session_state.api_key = OPENAI_API_KEY
+        if "openai_client" not in st.session_state:
+            st.session_state.openai_client = client
+    
+    # Session Management
+    st.subheader("🔄 Session Management")
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🔄 Reset Session", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.success("Session reset!")
+            st.rerun()
+    
+    with col2:
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state.messages = []
+            # Reset conversation flow and add greeting
+            st.session_state.conversation_flow = {
+                "email_validated": False,
+                "awaiting_email": True,
+                "awaiting_otp": False,
+                "otp_verified": False,
+                "awaiting_selection": False,
+                "selected_category": None,
+                "awaiting_specification": False
+            }
+            st.session_state.otp_data = None
+            add_initial_greeting()
+            st.rerun()
     
     st.divider()
     
-    # AWS Configuration Status
-    st.subheader("☁️ AWS Configuration")
-    if not (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY):
-        st.error("❌ AWS credentials not configured")
+    # Avatar Customization
+    st.subheader("🎭 Avatar Settings")
+    
+    avatar_choice = st.selectbox(
+        "Choose Alex's Avatar Style",
+        options=["default", "support_agent", "professional", "friendly", "tech", "custom"],
+        format_func=lambda x: {
+            "default": "🤖 Default (Friendly Tech)",
+            "support_agent": "🎧 Support Agent (Premium)",
+            "professional": "💼 Professional",
+            "friendly": "😊 Friendly",
+            "tech": "👨‍💻 Tech Expert",
+            "custom": "🎨 Custom URL"
+        }[x],
+        key="avatar_selector"
+    )
+    
+    # Update avatar based on selection
+    if avatar_choice == "default":
+        new_avatar = ALEX_AVATAR_URL
     else:
-        st.success("✅ AWS credentials configured")
-        if S3_BUCKET_NAME:
-            st.success(f"📦 S3 Bucket: {S3_BUCKET_NAME}")
-        if SES_FROM_EMAIL:
-            st.success(f"📧 Sender email: {SES_FROM_EMAIL}")
-        st.success(f"📬 Notification: {NOTIFICATION_EMAIL}")
+        new_avatar = ALTERNATIVE_AVATARS[avatar_choice]
+    
+    if st.session_state.selected_avatar != new_avatar:
+        st.session_state.selected_avatar = new_avatar
+        st.rerun()
+    
+    # Preview current avatar
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.markdown(f"""
+        <div style="text-align: center;">
+            <img src="{st.session_state.selected_avatar}" style="width: 60px; height: 60px; border-radius: 50%; border: 2px solid #e0e0e0;">
+            <p style="margin-top: 0.5rem; font-size: 0.8rem; color: #666;">Alex's Avatar</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if avatar_choice == "custom":
+            custom_url = st.text_input(
+                "Custom Avatar URL",
+                placeholder="https://example.com/avatar.jpg",
+                help="Enter a direct link to an image (JPG, PNG, SVG)"
+            )
+            if custom_url and st.button("Apply Custom Avatar"):
+                st.session_state.selected_avatar = custom_url
+                st.success("Custom avatar applied!")
+                st.rerun()
     
     st.divider()
     
+    # AWS SES status
+    if not (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY):
+        st.warning("⚠️ AWS SES not configured. Please add AWS credentials to .env file.")
+    else:
+        st.success("✅ AWS SES configured")
+        if not SES_FROM_EMAIL:
+            st.info("ℹ️ SES_FROM_EMAIL not set - will use first verified email")
+        else:
+            st.success(f"📧 Sender email: {SES_FROM_EMAIL}")
+    
+    st.divider()
+    
+    # Content Moderation Status
+    st.subheader("🛡️ Content Moderation")
+    if client:
+        st.success("✅ Content moderation active")
+        st.caption("OpenAI Moderation API + Gibberish Detection")
+    else:
+        st.warning("⚠️ Content moderation requires OpenAI API")
+        st.caption("Basic gibberish detection only")
+    
+    st.divider()
+    
+    # Simple status indicator
     st.subheader("🚀 System Status")
-    st.success("✅ Non-blocking operations")
-    st.success("✅ Instant restart (no countdown)")
-    st.success("✅ Production ready")
+    st.success("✅ All systems operational")
+    st.caption("Keep-alive system running in background")
 
 # Main chat interface
+
+# Display chat messages
 chat_container = st.container()
 
 with chat_container:
@@ -1280,12 +1680,13 @@ with chat_container:
         message_class = "user" if message["role"] == "user" else "assistant"
         timestamp = message.get("timestamp", "")
         
+        # Choose sender name and avatar based on role
         if message["role"] == "user":
             sender_name = "You"
             avatar_url = USER_AVATAR_URL
         else:
             sender_name = "Alex"
-            avatar_url = ALEX_AVATAR_URL
+            avatar_url = st.session_state.selected_avatar
         
         st.markdown(f"""
         <div class="chat-message {message_class}">
@@ -1300,7 +1701,7 @@ with chat_container:
         </div>
         """, unsafe_allow_html=True)
 
-# Handle conversation flow
+# Handle conversation flow with interactive buttons
 if st.session_state.conversation_flow["awaiting_email"]:
     st.markdown("---")
     st.markdown("**Please enter your corporate email address:**")
@@ -1315,20 +1716,15 @@ if st.session_state.conversation_flow["awaiting_email"]:
     with col1:
         if st.button("Submit", key="submit_email_flow"):
             if email_input.strip():
-                update_user_activity()
                 add_message_to_chat("user", email_input)
                 
+                # Validate email
                 with st.spinner("Validating email..."):
-                    try:
-                        validation_result = comprehensive_email_validation(email_input.strip())
-                        
-                        if handle_email_validation_flow(email_input.strip(), validation_result):
-                            st.rerun()
-                        else:
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Email validation error: {e}")
-                        add_message_to_chat("assistant", "Sorry, there was an error validating your email. Please try again.")
+                    validation_result = comprehensive_email_validation(email_input.strip())
+                    
+                    if handle_email_validation_flow(email_input.strip(), validation_result):
+                        st.rerun()
+                    else:
                         st.rerun()
             else:
                 st.warning("Please enter an email address")
@@ -1342,9 +1738,15 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
         st.info(f"""
         We've sent a 6-digit verification code to **{otp_data['email']}**
         
-        Please check your email and enter the code below.
+        Please:
+        1. Check your email inbox (and spam folder)
+        2. Find the 6-digit verification code
+        3. Enter the code below
+        
+        The verification code will expire in 10 minutes.
         """)
         
+        # OTP input
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
@@ -1352,128 +1754,151 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                 "Enter 6-digit verification code:",
                 placeholder="123456",
                 max_chars=6,
-                key="otp_input"
+                key="otp_input",
+                help="Enter the 6-digit code sent to your email"
             )
         
         with col2:
-            if st.button("✅ Verify", key="verify_otp", use_container_width=True):
+            if st.button("✅ Verify Code", key="verify_otp", use_container_width=True):
                 if otp_input.strip() and len(otp_input.strip()) == 6:
-                    update_user_activity()
                     add_message_to_chat("user", f"Entered verification code: {otp_input}")
                     
-                    try:
-                        is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
+                    # Verify OTP
+                    is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
+                    
+                    if is_valid:
+                        # Success - move to product/service selection
+                        add_message_to_chat("assistant", "✅ Email verified! What would you like to know more about?")
                         
-                        if is_valid:
-                            add_message_to_chat("assistant", "✅ Email verified! What would you like to explore? (I can answer questions about ALL our products and services)")
-                            
+                        st.session_state.conversation_flow["awaiting_otp"] = False
+                        st.session_state.conversation_flow["otp_verified"] = True
+                        st.session_state.conversation_flow["awaiting_selection"] = True
+                        
+                        st.rerun()
+                    else:
+                        # Failed verification
+                        st.session_state.otp_data["attempts"] = st.session_state.otp_data.get("attempts", 0) + 1
+                        add_message_to_chat("assistant", f"❌ {message}")
+                        
+                        # Check if too many attempts
+                        if st.session_state.otp_data["attempts"] >= 3:
+                            add_message_to_chat("assistant", 
+                                "Too many failed attempts. Please request a new verification code.")
+                            # Reset OTP but keep email validated
+                            st.session_state.otp_data = None
                             st.session_state.conversation_flow["awaiting_otp"] = False
-                            st.session_state.conversation_flow["otp_verified"] = True
-                            st.session_state.conversation_flow["awaiting_selection"] = True
-                            
-                            st.rerun()
-                        else:
-                            st.session_state.otp_data["attempts"] = st.session_state.otp_data.get("attempts", 0) + 1
-                            add_message_to_chat("assistant", f"❌ {message}")
-                            
-                            if st.session_state.otp_data["attempts"] >= 3:
-                                add_message_to_chat("assistant", 
-                                    "Too many failed attempts. Please request a new verification code.")
-                                st.session_state.otp_data = None
-                                st.session_state.conversation_flow["awaiting_otp"] = False
-                                st.session_state.conversation_flow["awaiting_email"] = True
-                            
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"OTP verification error: {e}")
-                        add_message_to_chat("assistant", "Sorry, there was an error verifying your code. Please try again.")
+                            st.session_state.conversation_flow["awaiting_email"] = True
+                        
                         st.rerun()
                 else:
                     st.warning("Please enter a valid 6-digit code")
         
         with col3:
-            if st.button("📧 Resend", key="resend_otp", use_container_width=True):
-                update_user_activity()
-                
+            if st.button("📧 Resend Code", key="resend_otp", use_container_width=True):
                 otp_data = st.session_state.otp_data
                 if otp_data:
-                    try:
-                        new_otp = generate_otp()
-                        success, message = send_otp_email(otp_data["email"], new_otp)
-                        
-                        if success:
-                            st.session_state.otp_data = {
-                                "otp": new_otp,
-                                "email": otp_data["email"],
-                                "timestamp": datetime.now(),
-                                "attempts": 0
-                            }
-                            add_message_to_chat("assistant", "📧 New verification code sent!")
-                            st.success("New code sent!")
-                        else:
-                            add_message_to_chat("assistant", f"❌ Failed to resend: {message}")
-                            st.error(f"Failed to resend: {message}")
-                    except Exception as e:
-                        st.error(f"Resend error: {e}")
-                        add_message_to_chat("assistant", "Sorry, there was an error sending a new code. Please try again.")
+                    # Generate new OTP
+                    new_otp = generate_otp()
+                    success, message = send_otp_email(otp_data["email"], new_otp)
+                    
+                    if success:
+                        # Update OTP data
+                        st.session_state.otp_data = {
+                            "otp": new_otp,
+                            "email": otp_data["email"],
+                            "timestamp": datetime.now(),
+                            "attempts": 0
+                        }
+                        add_message_to_chat("assistant", "📧 New verification code sent to your email!")
+                        st.success("New verification code sent!")
+                    else:
+                        add_message_to_chat("assistant", f"❌ Failed to resend verification code: {message}")
+                        st.error(f"Failed to resend: {message}")
                     st.rerun()
 
+# Product/Service Selection Flow
 elif st.session_state.conversation_flow["awaiting_selection"]:
     st.markdown("---")
-    st.markdown("**What would you like to explore first?**")
-    
-    # Universal knowledge indicator
-    st.markdown("""
-    <div class="universal-indicator">
-        <h4>🧠 Universal Knowledge</h4>
-        <p>I can answer questions about ALL our products and services throughout our conversation!</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("**What would you like to know more about?**")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("🚢 Start with Maritime Products", key="select_products", use_container_width=True):
-            update_user_activity()
-            add_message_to_chat("user", "I'd like to learn about your maritime products")
+        if st.button("🚢 Maritime Products", key="select_products", use_container_width=True):
+            add_message_to_chat("user", "I'm interested in your maritime products")
             
+            # Set category and provide overview
+            st.session_state.conversation_flow["selected_category"] = "products"
             st.session_state.conversation_flow["awaiting_selection"] = False
             
-            products_overview = """Perfect! Our AniSol Maritime Software Suite includes:
+            products_overview = """Our AniSol Maritime Software Suite provides integrated operational management for complex fleet requirements and regulatory compliance.
 
-🚢 **AniSol TMS** - Technical Management System for maintenance, inspections, and compliance
-🛒 **AniSol Procurement** - AI-powered purchasing and vendor management  
-📦 **AniSol Inventory Control** - Fleet-wide inventory with automated reordering
-👥 **AniSol Crewing Module** - Complete crew lifecycle management
-💰 **AniSol Payroll & Master Cash** - Multi-currency crew financial management
+**Product Portfolio:**
 
-💡 **Remember**: I can also help with technology services like AI chatbots, mobile apps, custom development, and system integration. What specific area interests you most?"""
+**AniSol TMS** - Technical Management System
+Comprehensive maintenance scheduling, inspection tracking, and certificate management with maritime-specific workflows.
+
+**AniSol Procurement** - AI-Powered Maritime Purchasing
+Advanced procurement automation with vendor management, approval controls, and ShipServ integration.
+
+**AniSol Inventory Control** - Fleet-Wide Inventory Management
+Real-time inventory tracking with automated reordering and comprehensive audit capabilities.
+
+**AniSol Crewing Module** - Complete Crew Management
+Full crew lifecycle management including compliance tracking, performance analytics, and payroll integration.
+
+**AniSol Payroll & Master Cash** - Crew Financial Management
+Maritime-specific payroll processing with multi-currency support and regulatory compliance.
+
+**Technical Architecture:**
+• Integrated module communication with seamless data flow
+• Ship and cloud deployment options with offline operational capability
+• Ultra-low bandwidth optimization for satellite communication environments
+• Comprehensive audit trails and regulatory compliance reporting
+
+Which specific operational area requires detailed analysis?"""
             
             add_message_to_chat("assistant", products_overview)
             st.rerun()
     
     with col2:
-        if st.button("💻 Start with Technology Services", key="select_services", use_container_width=True):
-            update_user_activity()
-            add_message_to_chat("user", "I'd like to learn about your technology services")
+        if st.button("💻 Technology Services", key="select_services", use_container_width=True):
+            add_message_to_chat("user", "I'm interested in your technology services")
             
+            # Set category and provide overview
+            st.session_state.conversation_flow["selected_category"] = "services"
             st.session_state.conversation_flow["awaiting_selection"] = False
             
-            services_overview = """Excellent! Our Technology Services include:
+            services_overview = """Our Technology Services address comprehensive business modernization requirements through specialized expertise and proven implementation methodologies.
 
-💻 **Custom Development** - Enterprise software and legacy modernization
-📱 **Mobile Solutions** - Native iOS/Android apps with maritime integration
-🤖 **AI & Machine Learning** - Intelligent automation and predictive analytics
-🤖 **AI Chatbots & Virtual Assistants** - Customer support automation
-📊 **Data Services** - Migration, analytics, and business intelligence
-🔗 **System Integration** - API development and enterprise connectivity
+**Service Capabilities:**
 
-💡 **Remember**: I can also discuss our maritime products and how they integrate with our technology services. What challenge can I help you solve?"""
+**Custom Development** - Enterprise software solutions and legacy system modernization using modern architectures and frameworks.
+
+**Mobile Applications** - Native iOS/Android development and cross-platform solutions with offline capabilities and enterprise integration.
+
+**AI & Machine Learning** - Intelligent automation implementation including predictive analytics, natural language processing, and computer vision.
+
+**Data Services** - Database migration, data warehousing, analytics platforms, and business intelligence systems.
+
+**System Integration** - API development, enterprise application connectivity, and hybrid cloud-premise architectures.
+
+**AI Chatbots & Virtual Assistants** - Conversational AI for customer service automation with multi-channel deployment capabilities.
+
+**Implementation Approach:**
+• Requirements analysis and technical architecture design
+• Agile development methodology with iterative stakeholder feedback
+• Quality assurance with security and performance validation
+• Deployment planning with comprehensive technical support
+
+**Industry Focus:** Maritime operations, manufacturing automation, healthcare compliance, financial services, retail technology.
+
+Which business challenge requires technical consultation?"""
             
             add_message_to_chat("assistant", services_overview)
             st.rerun()
 
-# Chat input (only show after category selection or OTP verification)
+# Chat input (only show after category selection or during conversation)
 if (not st.session_state.conversation_flow["awaiting_email"] and 
     not st.session_state.conversation_flow["awaiting_otp"] and
     not st.session_state.conversation_flow["awaiting_selection"]):
@@ -1484,37 +1909,52 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
         with col1:
             user_input = st.text_input(
                 "Message",
-                placeholder="Ask about any maritime product or technology service...",
+                placeholder="Ask about our maritime products or technology services...",
                 label_visibility="collapsed"
             )
         
         with col2:
             send_button = st.form_submit_button("Send", use_container_width=True)
 
+    # Handle user input with enhanced logic
     if send_button and user_input.strip():
         if not st.session_state.api_key:
             st.error("Please configure your OpenAI API key to start chatting.")
         else:
-            update_user_activity()
-            add_message_to_chat("user", user_input)
+            # Content moderation and gibberish detection
+            content_is_safe, filter_message = comprehensive_content_filter(user_input)
             
-            with st.spinner("Thinking..."):
-                try:
-                    ai_response = generate_smart_response(user_input)
-                    add_message_to_chat("assistant", ai_response)
-                    st.rerun()
-                    
-                except Exception as e:
-                    print(f"AI response error: {e}")
-                    fallback_response = "I can help you with any questions about our maritime products or technology services. Contact info@aniketsolutions.com for detailed consultation."
-                    add_message_to_chat("assistant", fallback_response)
-                    st.rerun()
+            if not content_is_safe:
+                # Add user message first
+                add_message_to_chat("user", user_input)
+                # Then add moderation response
+                add_message_to_chat("assistant", 
+                    f"I apologize, but I cannot process your message. {filter_message}\n\n"
+                    "Please rephrase your message with a clear business inquiry about our technology solutions or services."
+                )
+                st.rerun()
+            else:
+                # Add user message (after passing content filter)
+                add_message_to_chat("user", user_input)
+                
+                # Generate enhanced smart response
+                with st.spinner("Thinking..."):
+                    try:
+                        ai_response = generate_smart_response_enhanced(user_input)
+                        add_message_to_chat("assistant", ai_response)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        # Fallback response
+                        fallback_response = "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
+                        add_message_to_chat("assistant", fallback_response)
+                        st.rerun()
 
 # Footer
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; font-size: 0.8rem;'>"
-    "Powered by Aniket Solutions - Production Ready AI Assistant (Instant Restart)"
+    "Powered by Aniket Solutions • Enterprise AI Assistant"
     "</div>",
     unsafe_allow_html=True
 )
