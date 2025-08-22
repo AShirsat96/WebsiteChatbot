@@ -19,7 +19,6 @@ import uuid
 import pytz
 from typing import Optional, Dict, List, Any
 import pandas as pd
-import traceback
 
 # Load environment variables from .env file
 load_dotenv()
@@ -80,14 +79,12 @@ class S3StorageManager:
         """Ensure S3 bucket exists, create if it doesn't"""
         try:
             if not self.s3_client:
-                print(f"❌ S3 DEBUG: S3 client not available")
                 return False
             
             # Check if bucket exists
             try:
                 self.s3_client.head_bucket(Bucket=self.bucket_name)
                 self.bucket_exists = True
-                print(f"✅ S3 DEBUG: Bucket {self.bucket_name} exists")
                 return True
             except ClientError as e:
                 error_code = int(e.response['Error']['Code'])
@@ -103,17 +100,13 @@ class S3StorageManager:
                             )
                         
                         self.bucket_exists = True
-                        print(f"✅ S3 DEBUG: Created bucket {self.bucket_name}")
                         return True
                     except Exception as create_error:
-                        print(f"❌ S3 DEBUG: Failed to create bucket: {str(create_error)}")
                         return False
                 else:
-                    print(f"❌ S3 DEBUG: Bucket access error: {str(e)}")
                     return False
             
         except Exception as e:
-            print(f"❌ S3 DEBUG: General error: {str(e)}")
             return False
     
     def save_json(self, key: str, data: dict):
@@ -121,7 +114,6 @@ class S3StorageManager:
         try:
             if not self.s3_client or not self.bucket_exists:
                 if not self.ensure_bucket_exists():
-                    print(f"❌ S3 DEBUG: Cannot ensure bucket exists")
                     return False
             
             json_data = json.dumps(data, default=str, indent=2)
@@ -134,15 +126,13 @@ class S3StorageManager:
                 ServerSideEncryption='AES256'
             )
             
-            print(f"✅ S3 DEBUG: Saved {key} successfully")
             return True
             
         except Exception as e:
-            print(f"❌ S3 DEBUG: Save failed for {key}: {str(e)}")
             return False
 
 # =============================================================================
-# CONVERSATION STORAGE AND EMAIL MANAGER - ENHANCED WITH DEBUGGING
+# CONVERSATION STORAGE AND EMAIL MANAGER
 # =============================================================================
 
 class ConversationManager:
@@ -179,18 +169,15 @@ class ConversationManager:
             }
             
             self.messages = []
-            print(f"🔍 CONV DEBUG: Started new conversation {self.current_conversation_id}")
             return self.current_conversation_id
             
         except Exception as e:
-            print(f"❌ CONV DEBUG: Failed to start conversation: {str(e)}")
             return None
     
     def add_message(self, role: str, content: str):
         """Add a message to the current conversation"""
         try:
             if not self.current_conversation_id:
-                print(f"❌ CONV DEBUG: No conversation ID when adding message")
                 return False
             
             current_time = self.get_current_time_utc()
@@ -205,11 +192,9 @@ class ConversationManager:
             self.messages.append(message)
             self.conversation_data['messages'] = self.messages
             
-            print(f"🔍 CONV DEBUG: Added {role} message. Total: {len(self.messages)}")
             return True
             
         except Exception as e:
-            print(f"❌ CONV DEBUG: Failed to add message: {str(e)}")
             return False
     
     def update_user_email(self, email: str):
@@ -217,26 +202,15 @@ class ConversationManager:
         try:
             if self.conversation_data:
                 self.conversation_data['user_email'] = email
-                print(f"🔍 CONV DEBUG: Updated user email to {email}")
                 return True
-            print(f"❌ CONV DEBUG: No conversation data when updating email")
             return False
         except Exception as e:
-            print(f"❌ CONV DEBUG: Failed to update email: {str(e)}")
             return False
     
     def complete_conversation(self):
-        """Complete the conversation: save to S3 and send email - WITH ENHANCED DEBUGGING"""
-        print(f"🔍 COMPLETION DEBUG: Starting conversation completion...")
-        print(f"🔍 COMPLETION DEBUG: Conversation ID: {self.current_conversation_id}")
-        print(f"🔍 COMPLETION DEBUG: Message count: {len(self.messages)}")
-        print(f"🔍 COMPLETION DEBUG: User email: {self.conversation_data.get('user_email', 'None')}")
-        
+        """Complete the conversation: save to S3 and send email"""
         try:
             if not self.current_conversation_id or not self.conversation_data:
-                print(f"❌ COMPLETION DEBUG: Missing conversation ID or data")
-                print(f"❌ COMPLETION DEBUG: ID exists: {bool(self.current_conversation_id)}")
-                print(f"❌ COMPLETION DEBUG: Data exists: {bool(self.conversation_data)}")
                 return False
             
             current_time = self.get_current_time_utc()
@@ -249,22 +223,14 @@ class ConversationManager:
                 'total_messages': len(self.messages)
             })
             
-            print(f"🔍 COMPLETION DEBUG: Updated conversation data with completion info")
-            
             # Save to S3
             date_str = current_time.strftime('%Y/%m/%d')
             s3_key = f"conversations/{date_str}/{self.current_conversation_id}.json"
-            
-            print(f"🔍 COMPLETION DEBUG: Saving to S3 key: {s3_key}")
             s3_saved = self.s3_manager.save_json(s3_key, self.conversation_data)
-            
-            print(f"🔍 COMPLETION DEBUG: S3 save result: {s3_saved}")
             
             if s3_saved:
                 # Send email with entire conversation
-                print(f"🔍 COMPLETION DEBUG: Attempting to send email...")
                 email_sent = self.send_conversation_email()
-                print(f"🔍 COMPLETION DEBUG: Email send result: {email_sent}")
                 
                 # Clear current conversation
                 conversation_id = self.current_conversation_id
@@ -272,70 +238,44 @@ class ConversationManager:
                 self.conversation_data = {}
                 self.messages = []
                 
-                print(f"🔍 COMPLETION DEBUG: Conversation {conversation_id} completed. Email sent: {email_sent}")
                 return email_sent
-            else:
-                print(f"❌ COMPLETION DEBUG: S3 save failed, skipping email")
-                return False
+            
+            return False
             
         except Exception as e:
-            print(f"❌ COMPLETION DEBUG: Exception during completion: {str(e)}")
-            traceback.print_exc()
             return False
     
     def send_conversation_email(self):
-        """Send email with the complete conversation - WITH ENHANCED DEBUGGING"""
-        print(f"🔍 EMAIL DEBUG: Starting email send process...")
-        
+        """Send email with the complete conversation"""
         try:
-            if not ses_client:
-                print(f"❌ EMAIL DEBUG: SES client not configured")
-                return False
-                
-            if not self.conversation_data:
-                print(f"❌ EMAIL DEBUG: No conversation data")
+            if not ses_client or not self.conversation_data:
                 return False
             
             # Get sender email
             sender_email = SES_FROM_EMAIL
-            print(f"🔍 EMAIL DEBUG: SES_FROM_EMAIL config: {sender_email}")
-            
             if not sender_email:
                 try:
                     response = ses_client.list_verified_email_addresses()
                     verified_emails = response.get('VerifiedEmailAddresses', [])
-                    print(f"🔍 EMAIL DEBUG: Available verified emails: {verified_emails}")
-                    
                     if verified_emails:
                         sender_email = verified_emails[0]
-                        print(f"🔍 EMAIL DEBUG: Using first verified email: {sender_email}")
                     else:
-                        print(f"❌ EMAIL DEBUG: No verified emails found in SES")
                         return False
                 except Exception as e:
-                    print(f"❌ EMAIL DEBUG: Error getting verified emails: {str(e)}")
                     return False
             
-            # Create email content
+            # Create email subject
             user_email = self.conversation_data.get('user_email', 'Unknown')
             start_time = datetime.fromisoformat(self.conversation_data['start_time_singapore'].replace('Z', ''))
             subject = f"AniSol Conversation - {user_email} - {start_time.strftime('%Y-%m-%d %H:%M')}"
-            
-            print(f"🔍 EMAIL DEBUG: Email subject: {subject}")
-            print(f"🔍 EMAIL DEBUG: Sender: {sender_email}")
-            print(f"🔍 EMAIL DEBUG: Recipient: {NOTIFICATION_EMAIL}")
-            print(f"🔍 EMAIL DEBUG: Message count: {len(self.messages)}")
             
             # Create conversation summary
             total_messages = len(self.messages)
             duration = self.calculate_conversation_duration()
             
-            # Create email body
+            # Create HTML email with full conversation
             html_body = self.create_conversation_email_html(subject, duration, total_messages)
             text_body = self.create_conversation_email_text(subject, duration, total_messages)
-            
-            print(f"🔍 EMAIL DEBUG: Email body created. HTML length: {len(html_body)}")
-            print(f"🔍 EMAIL DEBUG: About to send email via SES...")
             
             # Send email
             response = ses_client.send_email(
@@ -350,32 +290,9 @@ class ConversationManager:
                 }
             )
             
-            print(f"✅ EMAIL DEBUG: Email sent successfully!")
-            print(f"🔍 EMAIL DEBUG: SES Message ID: {response.get('MessageId')}")
-            print(f"🔍 EMAIL DEBUG: Response metadata: {response.get('ResponseMetadata', {})}")
-            
             return True
             
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            error_message = e.response['Error']['Message']
-            print(f"❌ EMAIL DEBUG: AWS SES ClientError")
-            print(f"❌ EMAIL DEBUG: Error Code: {error_code}")
-            print(f"❌ EMAIL DEBUG: Error Message: {error_message}")
-            
-            # Common SES errors
-            if error_code == 'MessageRejected':
-                print(f"❌ EMAIL DEBUG: Email rejected - check if {sender_email} and {NOTIFICATION_EMAIL} are verified")
-            elif error_code == 'SendingPausedException':
-                print(f"❌ EMAIL DEBUG: SES sending paused - check AWS console")
-            elif error_code == 'AccountSendingDisabledException':
-                print(f"❌ EMAIL DEBUG: SES account sending disabled")
-            
-            return False
-            
         except Exception as e:
-            print(f"❌ EMAIL DEBUG: Unexpected error: {str(e)}")
-            traceback.print_exc()
             return False
     
     def calculate_conversation_duration(self):
@@ -772,7 +689,7 @@ def comprehensive_email_validation(email):
     return results
 
 # =============================================================================
-# SMART RESPONSE GENERATION - FIXED
+# SMART RESPONSE GENERATION
 # =============================================================================
 
 def generate_smart_response(user_message):
@@ -780,7 +697,7 @@ def generate_smart_response(user_message):
     try:
         if st.session_state.get("openai_client"):
             system_prompt = """
-You are Alex, a senior technology consultant at Aniket Solutions. Provide professional responses about ALL our products and services regardless of what the user initially selected.
+You are Alex, a senior technology consultant at Aniket Solutions. Provide professional responses about our maritime software products and technology services.
 
 AVAILABLE MARITIME PRODUCTS:
 - AniSol Inventory Control: Fleet inventory management with spare parts and consumables tracking
@@ -798,32 +715,37 @@ AVAILABLE TECHNOLOGY SERVICES:
 - AI Chatbots & Virtual Assistants: Conversational AI for customer service
 
 IMPORTANT INSTRUCTIONS:
-- Answer questions about BOTH maritime products AND technology services freely
-- The initial category selection is just for context, not a restriction
-- If they ask about products, provide detailed product information
-- If they ask about services, provide detailed service information
-- Use specific technical details and business benefits
-- Always include contact info@aniketsolutions.com for detailed consultation
-- Respond professionally without conversational AI language
+- Always respond based on the full conversation context.
+- If they ask about products, provide detailed product information.
+- If they ask about services, provide detailed service information.
+- Use specific technical details and business benefits.
+- Always include contact info@aniketsolutions.com for detailed consultation.
+- Respond professionally without conversational AI language.
 """
             
-            # FIXED: Get conversation history WITHOUT the current user message
+            # --- START OF CHANGES ---
+
+            # 1. Create the base message list with the system prompt
             messages_to_send = [{"role": "system", "content": system_prompt}]
+
+            # 2. Get the last 6 messages from session state to provide context
+            #    We re-format them to ensure they only have 'role' and 'content' keys
+            recent_history = [
+                {"role": msg["role"], "content": msg["content"]} 
+                for msg in st.session_state.messages[-6:]
+            ]
             
-            # Get last 6 messages from session state (excludes current message)
-            if len(st.session_state.messages) > 0:
-                recent_history = [
-                    {"role": msg["role"], "content": msg["content"]} 
-                    for msg in st.session_state.messages[-6:]
-                ]
-                messages_to_send.extend(recent_history)
+            # 3. Add the recent history to our list
+            messages_to_send.extend(recent_history)
             
-            # Add the current user message
-            messages_to_send.append({"role": "user", "content": user_message})
+            # Note: The user's latest message is already in st.session_state.messages,
+            # so we don't need to add it separately.
+
+            # --- END OF CHANGES ---
             
             response = st.session_state.openai_client.chat.completions.create(
                 model="gpt-4",
-                messages=messages_to_send,
+                messages=messages_to_send, # Use the new list with history
                 temperature=0.2,
                 max_tokens=600,
                 presence_penalty=0.0,
@@ -835,60 +757,9 @@ IMPORTANT INSTRUCTIONS:
         return "For information about our maritime software products and technology services, contact our specialists at info@aniketsolutions.com for detailed consultation."
         
     except Exception as e:
+        # It's good practice to log the actual error for debugging
         print(f"Error in generate_smart_response: {e}")
         return "For detailed information about our maritime products and technology services, contact our specialists at info@aniketsolutions.com"
-
-# =============================================================================
-# EMAIL TESTING FUNCTIONS
-# =============================================================================
-
-def test_email_sending():
-    """Test function to send a test email"""
-    try:
-        if not ses_client:
-            return False, "SES client not configured"
-        
-        sender_email = SES_FROM_EMAIL
-        if not sender_email:
-            response = ses_client.list_verified_email_addresses()
-            verified_emails = response.get('VerifiedEmailAddresses', [])
-            if verified_emails:
-                sender_email = verified_emails[0]
-            else:
-                return False, "No verified emails found"
-        
-        recipient_email = NOTIFICATION_EMAIL
-        
-        test_subject = f"AniSol Chatbot - Test Email - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        test_body = f"""
-This is a test email from the AniSol chatbot system.
-
-Configuration:
-- Sender: {sender_email}
-- Recipient: {recipient_email}
-- AWS Region: {AWS_REGION}
-- Timestamp: {datetime.now().isoformat()}
-- Test ID: {random.randint(1000, 9999)}
-
-If you receive this email, the email system is working correctly.
-
-Best regards,
-AniSol Chatbot System
-        """
-        
-        response = ses_client.send_email(
-            Source=sender_email,
-            Destination={'ToAddresses': [recipient_email]},
-            Message={
-                'Subject': {'Data': test_subject, 'Charset': 'UTF-8'},
-                'Body': {'Text': {'Data': test_body, 'Charset': 'UTF-8'}}
-            }
-        )
-        
-        return True, f"Test email sent successfully! Message ID: {response['MessageId']}"
-        
-    except Exception as e:
-        return False, f"Test email failed: {str(e)}"
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -932,7 +803,7 @@ def update_user_activity():
     st.session_state.last_user_activity = datetime.now()
 
 def check_conversation_inactivity():
-    """Check for conversation inactivity - FIXED"""
+    """Check for conversation inactivity"""
     if "last_user_activity" not in st.session_state:
         st.session_state.last_user_activity = datetime.now()
         st.session_state.conversation_ended = False
@@ -944,31 +815,31 @@ def check_conversation_inactivity():
     if st.session_state.get("conversation_ended"):
         return True
     
-    # Skip inactivity check during input phases
+    # Skip inactivity check if still in initial flow
     if (st.session_state.conversation_flow.get("awaiting_email") or 
-        st.session_state.conversation_flow.get("awaiting_otp")):
-        # Reset timer during input phases
-        st.session_state.last_user_activity = datetime.now()
+        st.session_state.conversation_flow.get("awaiting_otp") or 
+        st.session_state.conversation_flow.get("awaiting_selection")):
         return False
     
-    # Check for 5 minutes of inactivity after any user interaction
-    time_since_activity = current_time - st.session_state.last_user_activity
-    
-    # If 5 minutes of inactivity, end conversation
-    if time_since_activity.total_seconds() > 300:  # 5 minutes
-        st.session_state.conversation_ended = True
+    # Check if we're in the middle of a business conversation
+    if st.session_state.conversation_flow.get("otp_verified"):
+        time_since_activity = current_time - st.session_state.last_user_activity
         
-        # Complete conversation: save to S3 and send email
-        if "conversation_manager" in st.session_state:
-            success = st.session_state.conversation_manager.complete_conversation()
-            if success:
-                add_message_to_chat("assistant", 
-                    "Thank you for your time! This conversation has been completed and saved. You'll receive a copy via email shortly.")
-            else:
-                add_message_to_chat("assistant", 
-                    "Thank you for your time! This conversation has been completed.")
-        
-        return True
+        # If 5 minutes of inactivity, end conversation
+        if time_since_activity.total_seconds() > 300:  # 5 minutes
+            st.session_state.conversation_ended = True
+            
+            # Complete conversation: save to S3 and send email
+            if "conversation_manager" in st.session_state:
+                success = st.session_state.conversation_manager.complete_conversation()
+                if success:
+                    add_message_to_chat("assistant", 
+                        "Thank you for your time! This conversation has been completed and saved. You'll receive a copy via email shortly.")
+                else:
+                    add_message_to_chat("assistant", 
+                        "Thank you for your time! This conversation has been completed.")
+            
+            return True
     
     return False
 
@@ -1035,12 +906,17 @@ st.set_page_config(
     page_title="Aniket Solutions - AI Assistant",
     page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Custom CSS
 st.markdown("""
 <style>
+    /* Hide sidebar completely */
+    .css-1d391kg, .css-1rs6os, .css-17eq0hr, section[data-testid="stSidebar"], div[data-testid="stSidebarNav"] {
+        display: none !important;
+    }
+    
     /* Fix main app container */
     .stApp {
         max-width: 800px;
@@ -1052,6 +928,11 @@ st.markdown("""
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
         max-width: 800px;
+    }
+    
+    /* Hide Streamlit header */
+    header[data-testid="stHeader"] {
+        display: none !important;
     }
     
     /* Chat message styling */
@@ -1141,14 +1022,14 @@ if "openai_client" not in st.session_state:
     else:
         st.session_state.openai_client = None
 
-# FIXED: Simplified conversation flow
 if "conversation_flow" not in st.session_state:
     st.session_state.conversation_flow = {
         "email_validated": False,
         "awaiting_email": True,
         "awaiting_otp": False,
         "otp_verified": False,
-        "chat_ready": False
+        "awaiting_selection": False,
+        "selected_category": None
     }
 
 if "otp_data" not in st.session_state:
@@ -1173,8 +1054,17 @@ if conversation_ended:
     <div class="conversation-ended">
         <h3>✅ Conversation Completed</h3>
         <p>Thank you for your time! Your conversation has been saved to our records and you'll receive a copy via email.</p>
-        <p><small>Click below to start a new conversation.</small></p>
+        <p><small>The conversation will restart automatically in a few moments.</small></p>
     </div>
+    """, unsafe_allow_html=True)
+    
+    # Auto-restart after 5 seconds
+    st.markdown("""
+    <script>
+    setTimeout(function() {
+        window.location.reload();
+    }, 5000);
+    </script>
     """, unsafe_allow_html=True)
     
     # Manual restart option
@@ -1185,162 +1075,11 @@ if conversation_ended:
     
     st.stop()
 
-# =============================================================================
-# ENHANCED SIDEBAR WITH EMAIL DEBUGGING
-# =============================================================================
-
+# Sidebar for configuration
 with st.sidebar:
-    st.header("⚙️ Configuration & Debug")
-    
-    # Email System Diagnostics
-    st.subheader("📧 Email System Diagnostics")
-    
-    # Show current configuration
-    st.write("**Current Email Configuration:**")
-    st.write(f"• Notification Email: `{NOTIFICATION_EMAIL}`")
-    st.write(f"• SES From Email: `{SES_FROM_EMAIL or 'Not set'}`")
-    st.write(f"• AWS Region: `{AWS_REGION}`")
-    st.write(f"• SES Client: {'✅ Connected' if ses_client else '❌ Not connected'}")
-    
-    # Check AWS credentials
-    aws_status = "✅ Configured" if (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY) else "❌ Missing"
-    st.write(f"• AWS Credentials: {aws_status}")
-    
-    st.divider()
-    
-    # Test AWS SES connection
-    if st.button("🔍 Test SES Connection"):
-        try:
-            if not ses_client:
-                st.error("❌ SES client not initialized")
-            else:
-                # Test SES connection
-                response = ses_client.get_send_quota()
-                st.success("✅ SES connection successful!")
-                st.write(f"Send quota: {response.get('Max24HourSend', 'Unknown')}")
-                st.write(f"Sent in 24h: {response.get('SentLast24Hours', 'Unknown')}")
-        except Exception as e:
-            st.error(f"❌ SES connection failed: {str(e)}")
-    
-    # Check verified email addresses
-    if st.button("📋 Check Verified Emails"):
-        try:
-            if ses_client:
-                response = ses_client.list_verified_email_addresses()
-                verified_emails = response.get('VerifiedEmailAddresses', [])
-                
-                if verified_emails:
-                    st.success("✅ Verified email addresses:")
-                    for email in verified_emails:
-                        st.write(f"• {email}")
-                        if email == "as@aniketsolutions.com.sg":
-                            st.write("  ✅ Your notification email is verified!")
-                else:
-                    st.error("❌ No verified email addresses found")
-            else:
-                st.error("❌ SES client not available")
-        except Exception as e:
-            st.error(f"❌ Error checking verified emails: {str(e)}")
-    
-    # Send test email
-    if st.button("🧪 Send Test Email Now"):
-        success, message = test_email_sending()
-        if success:
-            st.success(message)
-            st.info("Check your email (including spam folder) in the next few minutes.")
-        else:
-            st.error(message)
-    
-    st.divider()
-    
-    # Conversation Email Testing
-    st.subheader("🧪 Conversation Email Testing")
-    
-    # Show current conversation status
-    if "conversation_manager" in st.session_state:
-        conv_mgr = st.session_state.conversation_manager
-        st.write("**Current Conversation:**")
-        st.write(f"• Conversation ID: {conv_mgr.current_conversation_id}")
-        st.write(f"• Messages: {len(conv_mgr.messages)}")
-        st.write(f"• User Email: {conv_mgr.conversation_data.get('user_email', 'None')}")
-        
-        # Show last activity
-        if "last_user_activity" in st.session_state:
-            last_activity = st.session_state.last_user_activity
-            time_since = (datetime.now() - last_activity).total_seconds()
-            st.write(f"• Time since activity: {int(time_since)}s")
-            st.write(f"• Minutes to auto-complete: {max(0, (300 - time_since) / 60):.1f}")
-        
-        st.divider()
-        
-        # Manual completion test
-        if st.button("📧 Complete Conversation & Send Email NOW"):
-            try:
-                # Add a test message if conversation is empty
-                if len(conv_mgr.messages) == 0:
-                    conv_mgr.add_message("user", "Test conversation for email functionality")
-                    conv_mgr.add_message("assistant", "This is a test conversation completion.")
-                
-                st.write("🔄 Attempting to complete conversation...")
-                
-                # Force completion
-                success = conv_mgr.complete_conversation()
-                
-                if success:
-                    st.success("✅ Conversation completed and email sent!")
-                    st.write("**Check your email now** (including spam folder)")
-                    st.balloons()
-                else:
-                    st.error("❌ Failed to complete conversation or send email")
-                    st.write("Check the console logs for error details")
-                    
-            except Exception as e:
-                st.error(f"❌ Error during completion: {str(e)}")
-                st.code(traceback.format_exc())
-    
-    else:
-        st.warning("No active conversation manager found")
-    
-    st.divider()
-    
-    # Test the email sending function directly
-    if st.button("📧 Test Email Function Directly"):
-        try:
-            # Create a test conversation manager
-            test_conv = ConversationManager()
-            test_conv.start_new_conversation("test_session")
-            test_conv.update_user_email("test@example.com")
-            test_conv.add_message("user", "Hello, I need information about your maritime solutions.")
-            test_conv.add_message("assistant", "Hello! I'd be happy to help you with our maritime software products.")
-            test_conv.add_message("user", "What's included in AniSol TMS?")
-            test_conv.add_message("assistant", "AniSol TMS includes comprehensive maintenance scheduling, inspection tracking, and certificate management.")
-            
-            # Force complete
-            success = test_conv.complete_conversation()
-            
-            if success:
-                st.success("✅ Test conversation email sent!")
-            else:
-                st.error("❌ Test conversation email failed")
-                
-        except Exception as e:
-            st.error(f"❌ Direct test failed: {str(e)}")
-    
-    st.divider()
-    
-    # Show detailed conversation flow status
-    st.subheader("🔍 Flow Status Debug")
-    if "conversation_flow" in st.session_state:
-        flow = st.session_state.conversation_flow
-        st.write("**Conversation Flow State:**")
-        for key, value in flow.items():
-            st.write(f"• {key}: {value}")
-    
-    if "conversation_ended" in st.session_state:
-        st.write(f"• conversation_ended: {st.session_state.conversation_ended}")
+    st.header("⚙️ Configuration")
     
     # S3 Storage Status
-    st.divider()
     st.subheader("☁️ S3 Storage Status")
     try:
         storage_status, storage_message = check_s3_status()
@@ -1379,6 +1118,25 @@ with st.sidebar:
             del st.session_state[key]
         st.success("Session reset!")
         st.rerun()
+    
+    st.divider()
+    
+    # AWS Configuration Status
+    st.subheader("☁️ AWS Configuration")
+    if not (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY):
+        st.error("❌ AWS credentials not configured")
+    else:
+        st.success("✅ AWS credentials configured")
+        if S3_BUCKET_NAME:
+            st.success(f"📦 S3 Bucket: {S3_BUCKET_NAME}")
+        if SES_FROM_EMAIL:
+            st.success(f"📧 Sender email: {SES_FROM_EMAIL}")
+        st.success(f"📬 Notification: {NOTIFICATION_EMAIL}")
+    
+    st.divider()
+    
+    st.subheader("🚀 System Status")
+    st.success("✅ Auto-save & email on completion")
 
 # Main chat interface
 chat_container = st.container()
@@ -1408,7 +1166,7 @@ with chat_container:
         </div>
         """, unsafe_allow_html=True)
 
-# Handle conversation flow - Email phase
+# Handle conversation flow
 if st.session_state.conversation_flow["awaiting_email"]:
     st.markdown("---")
     st.markdown("**Please enter your corporate email address:**")
@@ -1436,7 +1194,6 @@ if st.session_state.conversation_flow["awaiting_email"]:
             else:
                 st.warning("Please enter an email address")
 
-# Handle conversation flow - OTP phase
 elif st.session_state.conversation_flow["awaiting_otp"]:
     st.markdown("---")
     st.markdown("**📧 Verification Code Sent**")
@@ -1468,34 +1225,11 @@ elif st.session_state.conversation_flow["awaiting_otp"]:
                     is_valid, message = verify_otp(otp_input.strip(), st.session_state.otp_data)
                     
                     if is_valid:
-                        # FIXED: Show comprehensive overview instead of category selection
-                        welcome_message = """✅ Email verified! Welcome to Aniket Solutions consultation.
-
-I can help you with information about ALL our solutions:
-
-**🚢 Maritime Software Products:**
-• AniSol TMS - Technical Management System
-• AniSol Procurement - AI-Powered Maritime Purchasing  
-• AniSol Inventory Control - Fleet-Wide Inventory Management
-• AniSol Crewing Module - Complete Crew Management
-• AniSol Payroll & Master Cash - Crew Financial Management
-
-**💻 Technology Services:**
-• Custom Application Development
-• Mobile Solutions (iOS/Android)
-• AI & Machine Learning
-• Data Services & Migration
-• System Integration
-• AI Chatbots & Virtual Assistants
-
-What would you like to know more about? Feel free to ask about any of our maritime products or technology services!"""
+                        add_message_to_chat("assistant", "✅ Email verified! What would you like to know more about?")
                         
-                        add_message_to_chat("assistant", welcome_message)
-                        
-                        # FIXED: Set to chat ready state
                         st.session_state.conversation_flow["awaiting_otp"] = False
                         st.session_state.conversation_flow["otp_verified"] = True
-                        st.session_state.conversation_flow["chat_ready"] = True
+                        st.session_state.conversation_flow["awaiting_selection"] = True
                         
                         st.rerun()
                     else:
@@ -1536,8 +1270,78 @@ What would you like to know more about? Feel free to ask about any of our mariti
                         st.error(f"Failed to resend: {message}")
                     st.rerun()
 
-# Chat input (show when chat is ready)
-if st.session_state.conversation_flow.get("chat_ready"):
+elif st.session_state.conversation_flow["awaiting_selection"]:
+    st.markdown("---")
+    st.markdown("**What would you like to know more about?**")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("🚢 Maritime Products", key="select_products", use_container_width=True):
+            update_user_activity()
+            add_message_to_chat("user", "I'm interested in your maritime products")
+            
+            st.session_state.conversation_flow["selected_category"] = "products"
+            st.session_state.conversation_flow["awaiting_selection"] = False
+            
+            products_overview = """Our AniSol Maritime Software Suite provides integrated operational management for complex fleet requirements and regulatory compliance.
+
+**Product Portfolio:**
+
+**AniSol TMS** - Technical Management System
+Comprehensive maintenance scheduling, inspection tracking, and certificate management with maritime-specific workflows.
+
+**AniSol Procurement** - AI-Powered Maritime Purchasing
+Advanced procurement automation with vendor management, approval controls, and ShipServ integration.
+
+**AniSol Inventory Control** - Fleet-Wide Inventory Management
+Real-time inventory tracking with automated reordering and comprehensive audit capabilities.
+
+**AniSol Crewing Module** - Complete Crew Management
+Full crew lifecycle management including compliance tracking, performance analytics, and payroll integration.
+
+**AniSol Payroll & Master Cash** - Crew Financial Management
+Maritime-specific payroll processing with multi-currency support and regulatory compliance.
+
+Which specific operational area interests you most?"""
+            
+            add_message_to_chat("assistant", products_overview)
+            st.rerun()
+    
+    with col2:
+        if st.button("💻 Technology Services", key="select_services", use_container_width=True):
+            update_user_activity()
+            add_message_to_chat("user", "I'm interested in your technology services")
+            
+            st.session_state.conversation_flow["selected_category"] = "services"
+            st.session_state.conversation_flow["awaiting_selection"] = False
+            
+            services_overview = """Our Technology Services address comprehensive business modernization requirements through specialized expertise and proven implementation methodologies.
+
+**Service Capabilities:**
+
+**Custom Development** - Enterprise software solutions and legacy system modernization using modern architectures and frameworks.
+
+**Mobile Applications** - Native iOS/Android development and cross-platform solutions with offline capabilities and enterprise integration.
+
+**AI & Machine Learning** - Intelligent automation implementation including predictive analytics, natural language processing, and computer vision.
+
+**Data Services** - Database migration, data warehousing, analytics platforms, and business intelligence systems.
+
+**System Integration** - API development, enterprise application connectivity, and hybrid cloud-premise architectures.
+
+**AI Chatbots & Virtual Assistants** - Conversational AI for customer service automation with multi-channel deployment capabilities.
+
+Which technology challenge can we help you solve?"""
+            
+            add_message_to_chat("assistant", services_overview)
+            st.rerun()
+
+# Chat input (only show after category selection)
+if (not st.session_state.conversation_flow["awaiting_email"] and 
+    not st.session_state.conversation_flow["awaiting_otp"] and
+    not st.session_state.conversation_flow["awaiting_selection"]):
+    
     with st.form("chat_form", clear_on_submit=True):
         col1, col2 = st.columns([6, 1])
         
