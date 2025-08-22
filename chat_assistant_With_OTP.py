@@ -650,8 +650,11 @@ def comprehensive_email_validation(email):
 def generate_smart_response(user_message):
     """Generate smart response using OpenAI with UNIVERSAL knowledge of ALL products and services."""
     try:
-        if st.session_state.get("openai_client"):
-            system_prompt = """
+        # Check if OpenAI client is available
+        if not st.session_state.get("openai_client"):
+            return "Please configure your OpenAI API key in the sidebar to enable AI responses. I can help you with any questions about our maritime software products or technology services."
+        
+        system_prompt = """
 You are Alex, a senior technology consultant at Aniket Solutions. You have COMPLETE knowledge of ALL our offerings and can answer ANY question about maritime products OR technology services, regardless of what the user initially selected.
 
 COMPLETE ANIKET SOLUTIONS PORTFOLIO:
@@ -800,8 +803,8 @@ INTEGRATION CAPABILITIES:
 - Chatbots can provide support for maritime operations and crew
 
 CRITICAL INSTRUCTIONS:
-1. Answer ANY question about ANY product or service - completely ignore any initial category selection
-2. For customer support/chatbot questions → discuss our AI Chatbots & Virtual Assistants service
+1. ALWAYS provide a detailed, helpful response using the knowledge base above
+2. For customer support/chatbot questions → discuss our AI Chatbots & Virtual Assistants service in detail
 3. For mobile app questions → discuss our Mobile Solutions service and maritime app integrations
 4. For custom software questions → discuss our Custom Development service
 5. For maritime operational questions → discuss relevant AniSol products
@@ -810,38 +813,38 @@ CRITICAL INSTRUCTIONS:
 8. Provide specific technical details and business benefits
 9. Include contact info@aniketsolutions.com for detailed consultation
 10. Be conversational and helpful - address exactly what the user asks
-11. If asked about pricing, implementation, or demos, provide helpful guidance and direct to contact for personalized consultation
+11. NEVER give generic fallback responses - always use the detailed knowledge base above
+12. If asked about pricing, implementation, or demos, provide helpful guidance and direct to contact for personalized consultation
 
-REMEMBER: You have universal knowledge and can discuss ALL products and services in any conversation!
+REMEMBER: You have universal knowledge and can discuss ALL products and services in any conversation! Use this knowledge to provide detailed, specific answers.
 """
-            
-            # Include comprehensive conversation history for better context
-            messages_to_send = [{"role": "system", "content": system_prompt}]
-
-            # Get last 10 messages for context
-            recent_history = [
-                {"role": msg["role"], "content": msg["content"]} 
-                for msg in st.session_state.messages[-10:]
-            ]
-            
-            messages_to_send.extend(recent_history)
-            
-            response = st.session_state.openai_client.chat.completions.create(
-                model="gpt-4",
-                messages=messages_to_send,
-                temperature=0.3,
-                max_tokens=800,
-                presence_penalty=0.1,
-                frequency_penalty=0.1
-            )
-            
-            return response.choices[0].message.content.strip()
         
-        return "I can help you with any questions about our maritime software products or technology services. Contact info@aniketsolutions.com for detailed consultation."
+        # Include comprehensive conversation history for better context
+        messages_to_send = [{"role": "system", "content": system_prompt}]
+
+        # Get last 10 messages for context
+        recent_history = [
+            {"role": msg["role"], "content": msg["content"]} 
+            for msg in st.session_state.messages[-10:]
+        ]
+        
+        messages_to_send.extend(recent_history)
+        
+        response = st.session_state.openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=messages_to_send,
+            temperature=0.3,
+            max_tokens=1000,  # Increased for more detailed responses
+            presence_penalty=0.1,
+            frequency_penalty=0.1
+        )
+        
+        return response.choices[0].message.content.strip()
         
     except Exception as e:
         print(f"Error in generate_smart_response: {e}")
-        return "For information about any of our maritime products or technology services, contact info@aniketsolutions.com"
+        # Return a more informative error message
+        return f"I'm experiencing a technical issue right now, but I'd love to help you with customer support solutions! Our AI Chatbots & Virtual Assistants service can provide 24/7 automated customer support with natural language understanding. Contact info@aniketsolutions.com for immediate assistance."
 
 # =============================================================================
 # FIXED HELPER FUNCTIONS - NON-BLOCKING
@@ -1496,7 +1499,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; font-size: 0.8rem;'>"
-    "Powered by Aniket Solutions"
+    "Powered by Aniket Solutions - Production Ready AI Assistant (Instant Restart)"
     "</div>",
     unsafe_allow_html=True
 )
