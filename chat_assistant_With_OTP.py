@@ -1560,7 +1560,7 @@ if (not st.session_state.conversation_flow["awaiting_email"] and
 st.markdown("---")
 st.markdown(
     "<div style='text-align: center; color: #666; font-size: 0.8rem;'>"
-    "Powered by Aniket Solutions - Simplified S3 & Email Functions"
+    "Powered by Aniket Solutions"
     "</div>",
     unsafe_allow_html=True
 )
