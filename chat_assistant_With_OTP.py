@@ -655,7 +655,7 @@ def generate_smart_response(user_message):
             return "Please configure your OpenAI API key in the sidebar to enable AI responses. I can help you with any questions about our maritime software products or technology services."
         
         system_prompt = """
-You are Alex, a senior technology consultant at Aniket Solutions. You have COMPLETE knowledge of ALL our offerings and can answer ANY question about maritime products OR technology services, regardless of what the user initially selected.
+You are Alex, a senior technology consultant at Aniket Solutions. You have COMPLETE universal knowledge of ALL our offerings and can answer ANY question about ANY of our maritime products OR technology services.
 
 COMPLETE ANIKET SOLUTIONS PORTFOLIO:
 
@@ -795,28 +795,36 @@ COMPLETE ANIKET SOLUTIONS PORTFOLIO:
 - Maritime-specific chatbots for crew support and operational queries
 - Escalation workflows to human agents when needed
 
-INTEGRATION CAPABILITIES:
-- All maritime products integrate seamlessly with each other
-- Technology services can enhance and extend maritime product capabilities
-- Custom mobile apps can be built to integrate with AniSol maritime systems
-- AI services can be integrated into existing maritime workflows
-- Chatbots can provide support for maritime operations and crew
+CRITICAL RESPONSE RULES:
 
-CRITICAL INSTRUCTIONS:
-1. ALWAYS provide a detailed, helpful response using the knowledge base above
-2. For customer support/chatbot questions → discuss our AI Chatbots & Virtual Assistants service in detail
-3. For mobile app questions → discuss our Mobile Solutions service and maritime app integrations
-4. For custom software questions → discuss our Custom Development service
-5. For maritime operational questions → discuss relevant AniSol products
-6. For AI/ML questions → discuss our AI & Machine Learning services
-7. ALWAYS cross-reference when relevant (e.g., "We can integrate chatbots with your AniSol maritime systems")
-8. Provide specific technical details and business benefits
-9. Include contact info@aniketsolutions.com for detailed consultation
-10. Be conversational and helpful - address exactly what the user asks
-11. NEVER give generic fallback responses - always use the detailed knowledge base above
-12. If asked about pricing, implementation, or demos, provide helpful guidance and direct to contact for personalized consultation
+1. **IF QUESTION IS ABOUT ANY ANIKET SOLUTIONS PRODUCT/SERVICE:**
+   - Provide detailed, comprehensive answer using the knowledge base above
+   - Answer questions about customer support, chatbots, mobile apps, maritime products, AI services, etc.
+   - Cross-reference related products when relevant
+   - Include technical details and business benefits
+   - Add contact info@aniketsolutions.com for detailed consultation
+   - Be conversational and helpful
 
-REMEMBER: You have universal knowledge and can discuss ALL products and services in any conversation! Use this knowledge to provide detailed, specific answers.
+2. **IF QUESTION IS COMPLETELY UNRELATED TO ANIKET SOLUTIONS:**
+   - Only then use: "For information about our maritime products or technology services, contact info@aniketsolutions.com"
+
+3. **UNIVERSAL KNOWLEDGE RULE:**
+   - You can answer ANY question about ANY Aniket Solutions offering regardless of what the user initially selected
+   - Maritime products, technology services, AI, mobile apps - answer them all with full details
+
+EXAMPLES OF WHAT TO ANSWER IN DETAIL:
+- "I want customer support" → Detailed response about AI Chatbots & Virtual Assistants
+- "Tell me about mobile apps" → Detailed response about Mobile Solutions
+- "What is TMS?" → Detailed response about AniSol TMS
+- "I need inventory management" → Detailed response about AniSol Inventory Control
+- "Can you build custom software?" → Detailed response about Custom Application Development
+
+EXAMPLES OF FALLBACK RESPONSES:
+- "What's the weather today?" → Use fallback
+- "Tell me about your competitors" → Use fallback  
+- "What's 2+2?" → Use fallback
+
+Remember: You have complete knowledge of ALL Aniket Solutions products and services. Use it!
 """
         
         # Include comprehensive conversation history for better context
@@ -834,7 +842,7 @@ REMEMBER: You have universal knowledge and can discuss ALL products and services
             model="gpt-4",
             messages=messages_to_send,
             temperature=0.3,
-            max_tokens=1000,  # Increased for more detailed responses
+            max_tokens=1000,
             presence_penalty=0.1,
             frequency_penalty=0.1
         )
@@ -842,9 +850,16 @@ REMEMBER: You have universal knowledge and can discuss ALL products and services
         return response.choices[0].message.content.strip()
         
     except Exception as e:
+        error_msg = str(e)
         print(f"Error in generate_smart_response: {e}")
-        # Return a more informative error message
-        return f"I'm experiencing a technical issue right now, but I'd love to help you with customer support solutions! Our AI Chatbots & Virtual Assistants service can provide 24/7 automated customer support with natural language understanding. Contact info@aniketsolutions.com for immediate assistance."
+        
+        # Show different messages based on error type
+        if "api_key" in error_msg.lower() or "authentication" in error_msg.lower():
+            return "❌ OpenAI API key issue detected. Please check your API key configuration in the sidebar. For information about our maritime products or technology services, contact info@aniketsolutions.com"
+        elif "rate limit" in error_msg.lower():
+            return "⏱️ API rate limit reached. Please wait a moment and try again. For information about our maritime products or technology services, contact info@aniketsolutions.com"
+        else:
+            return "For information about our maritime products or technology services, contact info@aniketsolutions.com"
 
 # =============================================================================
 # FIXED HELPER FUNCTIONS - NON-BLOCKING
